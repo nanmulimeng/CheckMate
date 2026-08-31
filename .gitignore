@@ -36,6 +36,9 @@ yarn-error.log*
 # database (local SQLite file)
 *.db
 
+# photo storage (uploaded images live here, never commit)
+/data/
+
 # vercel
 .vercel
 

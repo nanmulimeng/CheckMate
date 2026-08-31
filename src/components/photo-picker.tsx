@@ -18,17 +18,21 @@ const INITIAL_QUALITY = 0.8;
 const QUALITY_FLOOR = 0.3;
 const TARGET_BYTES = 300 * 1024;
 
+/** 上传状态：压缩完成即自动 POST /api/photos；失败可重试或移除。 */
+export type PhotoStatus = "uploading" | "done" | "error";
+
 export interface PhotoItem {
   key: string;
   name: string;
-  blob: Blob; // 压缩产物（JPEG），上传时直接用
+  blob: Blob; // 压缩产物（JPEG），上传直接用它
   url: string; // 预览缩略图
+  status: PhotoStatus;
 }
 
 export interface PhotoPickerHandle {
-  /** 返回已上传照片的 id 列表。上传在 Task 7 接通（POST /api/photos），
-   *  届时把压缩产物传上去换取 id；当前恒返回空数组，
-   *  创建打卡的 API 已兼容 photoIds: []。 */
+  /** 等待全部在途上传结束后，返回仍被保留且上传成功的照片 id。
+   *  已移除/上传失败的照片不会出现在结果里（失败会通过 onError 告知，
+   *  界面上也有失败标记，可重试或移除——不会静默丢弃）。 */
   getPhotoIds: () => Promise<number[]>;
 }
 
@@ -78,12 +82,29 @@ export default function PhotoPicker({
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [compressing, setCompressing] = useState(0);
 
+  // key → 上传结果（photoId；null = 失败）。用 ref 而非 state 读取，
+  // 提交瞬间 React 渲染可能滞后，这里必须同步可读。
+  const resultsRef = useRef(new Map<string, number | null>());
+  // 在途任务（压缩+上传）：getPhotoIds 统一等待，避免漏掉刚选的照片
+  const tasksRef = useRef(new Map<string, Promise<void>>());
+  // 已移除的照片：上传仍在飞也不能把 id 计入结果
+  const cancelledRef = useRef(new Set<string>());
+
   useImperativeHandle(
     handleRef,
     () => ({
-      getPhotoIds: async () => [],
+      getPhotoIds: async () => {
+        await Promise.allSettled([...tasksRef.current.values()]);
+        const ids = [...resultsRef.current.values()].filter(
+          (v): v is number => v != null,
+        );
+        const failed = resultsRef.current.size - ids.length;
+        if (failed > 0)
+          onError?.(`${failed} 张照片上传失败，本次打卡未带上；可重试或移除`);
+        return ids;
+      },
     }),
-    [],
+    [onError],
   );
 
   // 卸载时释放仍在用的预览 URL（已移除的在 remove 里即时释放）
@@ -98,6 +119,42 @@ export default function PhotoPicker({
     [],
   );
 
+  const uploadPhoto = useCallback(async (item: PhotoItem): Promise<void> => {
+    try {
+      const fd = new FormData();
+      // 压缩产物固定是 JPEG；文件名仅供服务端报错展示
+      fd.append("files", item.blob, item.name || "photo.jpeg");
+      const res = await fetch("/api/photos", { method: "POST", body: fd });
+      if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+      const data = (await res.json().catch(() => null)) as {
+        photoIds?: number[];
+      } | null;
+      const id = data?.photoIds?.[0];
+      if (typeof id !== "number") throw new Error("unexpected response");
+      if (!cancelledRef.current.has(item.key)) {
+        resultsRef.current.set(item.key, id);
+        setPhotos((prev) =>
+          prev.map((p) => (p.key === item.key ? { ...p, status: "done" } : p)),
+        );
+      }
+    } catch {
+      if (!cancelledRef.current.has(item.key)) {
+        resultsRef.current.set(item.key, null);
+        setPhotos((prev) =>
+          prev.map((p) => (p.key === item.key ? { ...p, status: "error" } : p)),
+        );
+      }
+    }
+  }, []);
+
+  // 任务结束后自摘，getPhotoIds 只需等仍在飞的
+  const runTask = useCallback((key: string, task: Promise<void>) => {
+    tasksRef.current.set(
+      key,
+      task.finally(() => tasksRef.current.delete(key)),
+    );
+  }, []);
+
   const pick = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
@@ -109,30 +166,49 @@ export default function PhotoPicker({
       }
       if (files.length > room) onError?.(`最多 ${PHOTO_LIMIT} 张照片，已忽略多余的张数`);
 
-      setCompressing((n) => n + Math.min(files.length, room));
-      for (const file of files.slice(0, room)) {
-        try {
-          const blob = await compressImage(file);
-          setPhotos((prev) => [
-            ...prev,
-            {
-              key: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      const batch = files.slice(0, room);
+      setCompressing((n) => n + batch.length);
+      for (const file of batch) {
+        const key = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const task = (async () => {
+          try {
+            const blob = await compressImage(file);
+            const item: PhotoItem = {
+              key,
               name: file.name,
               blob,
               url: URL.createObjectURL(blob),
-            },
-          ]);
-        } catch {
-          onError?.(`「${file.name}」处理失败，已跳过`);
-        } finally {
-          setCompressing((n) => Math.max(0, n - 1));
-        }
+              status: "uploading",
+            };
+            setPhotos((prev) => [...prev, item]);
+            await uploadPhoto(item);
+          } catch {
+            onError?.(`「${file.name}」处理失败，已跳过`);
+          } finally {
+            setCompressing((n) => Math.max(0, n - 1));
+          }
+        })();
+        runTask(key, task);
       }
     },
-    [compressing, onError, photos.length],
+    [compressing, onError, photos.length, runTask, uploadPhoto],
+  );
+
+  const retry = useCallback(
+    (item: PhotoItem) => {
+      setPhotos((prev) =>
+        prev.map((p) => (p.key === item.key ? { ...p, status: "uploading" } : p)),
+      );
+      resultsRef.current.delete(item.key);
+      runTask(item.key, uploadPhoto(item));
+    },
+    [runTask, uploadPhoto],
   );
 
   const remove = useCallback((key: string) => {
+    cancelledRef.current.add(key);
+    resultsRef.current.delete(key);
+    tasksRef.current.delete(key);
     setPhotos((prev) => {
       const target = prev.find((p) => p.key === key);
       if (target) URL.revokeObjectURL(target.url);
@@ -187,8 +263,21 @@ export default function PhotoPicker({
                 ✕
               </button>
               <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[10px] text-white">
-                {kb(p.blob.size)}
+                {p.status === "uploading" ? "上传中…" : kb(p.blob.size)}
               </span>
+              {p.status === "error" && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-md bg-black/70 p-1 text-white">
+                  <span className="text-[10px]">上传失败</span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="xs"
+                    onClick={() => retry(p)}
+                  >
+                    重试
+                  </Button>
+                </div>
+              )}
             </li>
           ))}
         </ul>
