@@ -9,6 +9,8 @@ import { savePhoto } from "@/lib/photo-store";
 // 创建打卡时由 /api/checkins 绑定，未绑定的悬挂照片由每日 cron 清理（Task 11）。
 const MAX_FILES = 3;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
+// multipart 各 part 的边界行、字段名等表单开销远小于此余量
+const MAX_BODY_BYTES = MAX_FILES * MAX_FILE_BYTES + 64 * 1024;
 const MIME_TO_EXT: Record<string, string> = {
   "image/jpeg": "jpeg",
   "image/png": "png",
@@ -18,6 +20,21 @@ const MIME_TO_EXT: Record<string, string> = {
 export async function POST(req: NextRequest) {
   try {
     await requireUser();
+
+    // formData() 会把整个请求体（含全部文件内容）缓冲进内存，之后才轮到
+    // 逐文件的 f.size 校验 —— 2G 内存的服务器上，一个超大请求能先把进程
+    // 撑爆。所以必须在 formData() 之前用 Content-Length 拦总量：
+    //   * 超上限 → 413，字节根本不进内存；
+    //   * 缺 Content-Length（chunked 手造）→ 411。浏览器 FormData 上传
+    //     一定带 CL，正常用户不受影响。
+    const contentLength = Number(req.headers.get("content-length") ?? "");
+    if (!Number.isInteger(contentLength) || contentLength <= 0)
+      return NextResponse.json({ error: "缺少 Content-Length，拒绝上传" }, { status: 411 });
+    if (contentLength > MAX_BODY_BYTES)
+      return NextResponse.json(
+        { error: `上传总量过大（单次最多 ${MAX_FILES} 张、每张 5MB）` },
+        { status: 413 },
+      );
 
     let form: FormData;
     try {
