@@ -3,6 +3,7 @@ import CheckInForm, { type EditTarget } from "@/components/checkin-form";
 import { getSession } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
 import { addDays, beijingDateStr, canCheckInFor, defaultCheckInDate } from "@/lib/dates";
+import { getDeadlineHour } from "@/lib/settings";
 
 // 登录守卫：读取 session 必须走动态渲染
 export const dynamic = "force-dynamic";
@@ -30,12 +31,13 @@ export default async function NewCheckInPage(props: PageProps<"/checkin/new">) {
 
   const now = new Date();
   const today = beijingDateStr(now);
+  const deadlineHour = await getDeadlineHour();
   const defaults = {
-    defaultDate: defaultCheckInDate(now),
+    defaultDate: defaultCheckInDate(now, deadlineHour),
     today,
     yesterday: addDays(today, -1),
-    allowToday: canCheckInFor(today, now),
-    allowYesterday: canCheckInFor(addDays(today, -1), now),
+    allowToday: canCheckInFor(today, now, deadlineHour),
+    allowYesterday: canCheckInFor(addDays(today, -1), now, deadlineHour),
   };
 
   let edit: EditTarget | null = null;
@@ -48,7 +50,7 @@ export default async function NewCheckInPage(props: PageProps<"/checkin/new">) {
         select: { userId: true, subjectId: true, durationMinutes: true, note: true, date: true },
       });
       // 非本人/不存在/已锁定 → 回首页（不打错误页，别把人拦在流程里）
-      if (target && target.userId === session.userId && canCheckInFor(target.date, now)) {
+      if (target && target.userId === session.userId && canCheckInFor(target.date, now, deadlineHour)) {
         edit = {
           id,
           subjectId: target.subjectId,

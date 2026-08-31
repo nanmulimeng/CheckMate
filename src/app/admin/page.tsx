@@ -38,13 +38,14 @@ export default async function AdminPage() {
   if (!me) redirect("/login");
   if (!me.isAdmin) redirect("/");
 
-  const [members, examDate, remindHour, inviteCode] = await Promise.all([
+  const [members, examDate, remindHour, deadlineHour, inviteCode] = await Promise.all([
     db.user.findMany({
       orderBy: { id: "asc" },
       select: { id: true, username: true, displayName: true, createdAt: true, serverchanKey: true },
     }),
     getSetting("exam_date"),
     getSetting("remind_hour"),
+    getSetting("deadline_hour"),
     getSetting("invite_code"),
     // cron_secret 刻意不查：它只该活在服务端（cron 入口的鉴权用），
     // 任何走到客户端的路径都会让它进 RSC payload / HTML。
@@ -100,7 +101,12 @@ export default async function AdminPage() {
       </Card>
 
       <AdminSettingsForm
-        initial={{ exam_date: examDate, remind_hour: remindHour, invite_code: inviteCode }}
+        initial={{
+          exam_date: examDate,
+          remind_hour: remindHour,
+          deadline_hour: deadlineHour,
+          invite_code: inviteCode,
+        }}
       />
     </main>
   );

@@ -5,6 +5,7 @@ import { getPrisma } from "@/lib/db";
 import { canCheckInFor } from "@/lib/dates";
 import { validateCheckInPayload } from "@/lib/checkin-validate";
 import { deletePhoto } from "@/lib/photo-store";
+import { getDeadlineHour } from "@/lib/settings";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -33,7 +34,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const db = getPrisma();
     const checkIn = await findOwnCheckIn(parsed, userId);
     if (!checkIn) return NextResponse.json({ error: "打卡不存在" }, { status: 403 });
-    if (!canCheckInFor(checkIn.date, new Date()))
+    if (!canCheckInFor(checkIn.date, new Date(), await getDeadlineHour()))
       return NextResponse.json({ error: "该打卡已锁定" }, { status: 403 });
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown> | null;
@@ -83,7 +84,7 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     const checkIn = await findOwnCheckIn(parsed, userId);
     if (!checkIn) return NextResponse.json({ error: "打卡不存在" }, { status: 403 });
     // 与 PATCH 同一道截止锁：已结算的历史打卡不允许删除，否则可回溯改动周报/streak
-    if (!canCheckInFor(checkIn.date, new Date()))
+    if (!canCheckInFor(checkIn.date, new Date(), await getDeadlineHour()))
       return NextResponse.json({ error: "该打卡已锁定" }, { status: 403 });
 
     const photos = await db.photo.findMany({

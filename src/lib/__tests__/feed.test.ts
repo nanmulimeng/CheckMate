@@ -173,5 +173,9 @@ describe("buildFeed", () => {
     expect(
       buildFeed(args({ users: [{ id: 1, displayName: "甲" }], checkIns: [row], now: new Date("2026-08-31T18:00:00Z") })).members[0].checkins[0].editable,
     ).toBe(false);
+    // 同一时刻但管理员把截止小时配成 5 → 窗口恢复，本人又可编辑
+    expect(
+      buildFeed(args({ users: [{ id: 1, displayName: "甲" }], checkIns: [row], now: new Date("2026-08-31T18:00:00Z"), deadlineHour: 5 })).members[0].checkins[0].editable,
+    ).toBe(true);
   });
 });

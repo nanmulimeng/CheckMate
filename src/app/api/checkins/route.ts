@@ -4,11 +4,12 @@ import { AuthError, requireUser } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
 import { canCheckInFor, defaultCheckInDate } from "@/lib/dates";
 import { validateCheckInPayload, validatePhotoIds } from "@/lib/checkin-validate";
+import { getDeadlineHour } from "@/lib/settings";
 
 // POST /api/checkins — 创建打卡
 // body: { subjectId, date?, durationMinutes, note?, photoIds? } → { id }
-// date 缺省由服务端用 defaultCheckInDate 决定（凌晨 01:00 前默认记昨天）；
-// canCheckInFor 收口全部日期规则：只允许今天/昨天且未过次日 01:00 截止。
+// date 缺省由服务端用 defaultCheckInDate 决定（截止小时前默认记昨天）；
+// canCheckInFor 收口全部日期规则：只允许今天/昨天且未过次日截止（小时数管理员可配）。
 export async function POST(req: NextRequest) {
   try {
     const { id: userId } = await requireUser();
@@ -19,13 +20,16 @@ export async function POST(req: NextRequest) {
     const rawDate = body?.["date"];
     const rawPhotoIds = body?.["photoIds"];
 
+    const now = new Date();
+    const deadlineHour = await getDeadlineHour();
+
     if (!validateCheckInPayload({ subjectId, durationMinutes, note }).ok)
       return NextResponse.json({ error: "科目或时长不合法（时长需为 1-960 分钟，备注 ≤500 字）" }, { status: 400 });
 
     if (rawDate != null && (typeof rawDate !== "string" || !rawDate))
       return NextResponse.json({ error: "日期格式不合法" }, { status: 400 });
-    const date = typeof rawDate === "string" && rawDate ? rawDate : defaultCheckInDate(new Date());
-    if (!canCheckInFor(date, new Date()))
+    const date = typeof rawDate === "string" && rawDate ? rawDate : defaultCheckInDate(now, deadlineHour);
+    if (!canCheckInFor(date, now, deadlineHour))
       return NextResponse.json({ error: "已过截止时间，不可补卡" }, { status: 403 });
 
     // photoIds 可选：正整数数组、最多 3 张（规则收口在 checkin-validate 纯函数）

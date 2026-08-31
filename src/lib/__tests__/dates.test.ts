@@ -18,6 +18,12 @@ describe("deadlineOf", () => {
   it("12-01 的截止 = 12-02 北京 01:00 = UTC 12-01 17:00", () => {
     expect(deadlineOf("2026-12-01").getTime()).toBe(Date.UTC(2026, 11, 1, 17, 0, 0));
   });
+  it("可配小时：10 → 次日北京 10:00 = UTC 次日 02:00（跨日进位）", () => {
+    expect(deadlineOf("2026-12-01", 10).getTime()).toBe(Date.UTC(2026, 11, 2, 2, 0, 0));
+  });
+  it("可配小时：0 → 当天北京 24:00 = UTC 当天 16:00", () => {
+    expect(deadlineOf("2026-12-01", 0).getTime()).toBe(Date.UTC(2026, 11, 1, 16, 0, 0));
+  });
 });
 
 describe("canCheckInFor", () => {
@@ -30,6 +36,11 @@ describe("canCheckInFor", () => {
   it("未来日期不可以（防穿越）", () => {
     expect(canCheckInFor("2026-12-05", new Date("2026-12-01T10:00:00Z"))).toBe(false);
   });
+  it("可配小时：默认已锁但配成 10 后仍在窗口内", () => {
+    const now = new Date("2026-12-01T18:00:00Z"); // 北京 12-02 02:00
+    expect(canCheckInFor("2026-12-01", now)).toBe(false);
+    expect(canCheckInFor("2026-12-01", now, 10)).toBe(true);
+  });
 });
 
 describe("defaultCheckInDate（凌晨归属）", () => {
@@ -41,6 +52,10 @@ describe("defaultCheckInDate（凌晨归属）", () => {
   });
   it("北京 14:00 → 今天", () => {
     expect(defaultCheckInDate(new Date("2026-12-01T06:00:00Z"))).toBe("2026-12-01");
+  });
+  it("可配小时：北京 02:00 配截止 5 → 仍默认昨天（默认 1 则记今天）", () => {
+    expect(defaultCheckInDate(new Date("2026-12-01T18:00:00Z"), 5)).toBe("2026-12-01"); // 北京 12-02
+    expect(defaultCheckInDate(new Date("2026-12-01T18:00:00Z"))).toBe("2026-12-02");
   });
 });
 

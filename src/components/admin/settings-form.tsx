@@ -12,15 +12,21 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-// 全局设置编辑器：考试日期 / 提醒小时 / 邀请码。整体一表单一次 PATCH，
+// 全局设置编辑器：考试日期 / 提醒小时 / 打卡截止小时 / 邀请码。整体一表单一次 PATCH，
 // 成功后用响应回显的最新值刷新本地状态（邀请码始终可见——本页只有管理员能进）。
 export default function AdminSettingsForm({
   initial,
 }: {
-  initial: { exam_date: string; remind_hour: string; invite_code: string };
+  initial: {
+    exam_date: string;
+    remind_hour: string;
+    deadline_hour: string;
+    invite_code: string;
+  };
 }) {
   const [examDate, setExamDate] = useState(initial.exam_date);
   const [remindHour, setRemindHour] = useState(initial.remind_hour);
+  const [deadlineHour, setDeadlineHour] = useState(initial.deadline_hour);
   const [inviteCode, setInviteCode] = useState(initial.invite_code);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -36,6 +42,7 @@ export default function AdminSettingsForm({
         body: JSON.stringify({
           exam_date: examDate.trim(),
           remind_hour: Number(remindHour),
+          deadline_hour: Number(deadlineHour),
           invite_code: inviteCode.trim(),
         }),
       });
@@ -43,11 +50,13 @@ export default function AdminSettingsForm({
         error?: string;
         exam_date?: string;
         remind_hour?: string;
+        deadline_hour?: string;
         invite_code?: string;
       };
       if (res.ok) {
         setExamDate(data.exam_date ?? examDate);
         setRemindHour(data.remind_hour ?? remindHour);
+        setDeadlineHour(data.deadline_hour ?? deadlineHour);
         setInviteCode(data.invite_code ?? inviteCode);
         setMsg({ ok: true, text: "已保存" });
       } else {
@@ -65,7 +74,8 @@ export default function AdminSettingsForm({
       <CardHeader>
         <CardTitle className="text-sm font-medium">全局设置</CardTitle>
         <CardDescription className="text-xs">
-          考试日期用于首页倒计时；提醒小时即时生效（每小时整点检查，到设定小时才推送）；邀请码给新成员注册用。
+          考试日期用于首页倒计时；提醒小时即时生效（每小时整点检查，到设定小时才推送）；
+          截止小时是每天打卡的锁线（如 1 = 次日 01:00 前可补昨天的卡）；邀请码给新成员注册用。
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -90,6 +100,19 @@ export default function AdminSettingsForm({
               required
               value={remindHour}
               onChange={(e) => setRemindHour(e.target.value)}
+              className="w-24"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="deadlineHour">打卡截止小时（0-23，当前 {deadlineHour} 点）</Label>
+            <Input
+              id="deadlineHour"
+              type="number"
+              min={0}
+              max={23}
+              required
+              value={deadlineHour}
+              onChange={(e) => setDeadlineHour(e.target.value)}
               className="w-24"
             />
           </div>

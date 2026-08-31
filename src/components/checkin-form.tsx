@@ -64,7 +64,7 @@ export default function CheckInForm({
   const [submitting, setSubmitting] = useState(false);
   const pickerRef = useRef<PhotoPickerHandle | null>(null);
 
-  // 可选日期只来自服务端裁决的两个合法值（凌晨 01:00 前昨天+今天，之后只剩今天）
+  // 可选日期只来自服务端裁决的两个合法值（截止小时前昨天+今天，之后只剩今天；小时数管理员可配）
   const dateOptions = useMemo(() => {
     const opts: string[] = [];
     if (defaults.allowYesterday) opts.push(defaults.yesterday);

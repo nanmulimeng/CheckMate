@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireUser } from "@/lib/auth";
 import { getSetting, setSetting } from "@/lib/settings";
 
-// 管理员全局设置（Setting 表）：exam_date / remind_hour / invite_code。
-// GET 返回当前三项（仅管理员）；PATCH 校验后写入（仅管理员，403）。
+// 管理员全局设置（Setting 表）：exam_date / remind_hour / deadline_hour / invite_code。
+// GET 返回当前四项（仅管理员）；PATCH 校验后写入（仅管理员，403）。
 // exam_date 只收真实存在的日期：正则挡格式垃圾（Task 8 评审发现过 NaN 天倒计时），
 // 再用「UTC 解析后回绕回原串」挡 2026-02-30 这类格式合法但语义非法的值。
 
@@ -17,12 +17,18 @@ function isRealDate(s: string): boolean {
 }
 
 async function readAdminSettings() {
-  const [examDate, remindHour, inviteCode] = await Promise.all([
+  const [examDate, remindHour, deadlineHour, inviteCode] = await Promise.all([
     getSetting("exam_date"),
     getSetting("remind_hour"),
+    getSetting("deadline_hour"),
     getSetting("invite_code"),
   ]);
-  return { exam_date: examDate, remind_hour: remindHour, invite_code: inviteCode };
+  return {
+    exam_date: examDate,
+    remind_hour: remindHour,
+    deadline_hour: deadlineHour,
+    invite_code: inviteCode,
+  };
 }
 
 export async function GET() {
@@ -60,6 +66,13 @@ export async function PATCH(req: NextRequest) {
       if (typeof hour !== "number" || !Number.isInteger(hour) || hour < 0 || hour > 23)
         return NextResponse.json({ error: "remind_hour 需为 0-23 的整数" }, { status: 400 });
       updates.push({ key: "remind_hour", value: String(hour) });
+    }
+
+    if ("deadline_hour" in (body ?? {})) {
+      const hour = body!["deadline_hour"];
+      if (typeof hour !== "number" || !Number.isInteger(hour) || hour < 0 || hour > 23)
+        return NextResponse.json({ error: "deadline_hour 需为 0-23 的整数" }, { status: 400 });
+      updates.push({ key: "deadline_hour", value: String(hour) });
     }
 
     if ("invite_code" in (body ?? {})) {
