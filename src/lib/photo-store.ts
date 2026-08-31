@@ -6,7 +6,14 @@ export const DATA_DIR = process.env.SETI_DATA_DIR ?? path.join(process.cwd(), "d
 
 export function photoPathIsSafe(rel: string): boolean {
   const norm = path.normalize(rel);
-  return !path.isAbsolute(norm) && !norm.split(path.sep).includes("..") && norm.startsWith("photos");
+  // 首段必须是字面 "photos"：startsWith("photos") 会被 "photos-evil/x" 这类
+  // 同前缀目录绕过（库里只写过 photos/<月>/<uuid>，白名单按段比对）
+  const segments = norm.split(path.sep).filter((s) => s !== "");
+  return (
+    !path.isAbsolute(norm) &&
+    !norm.split(path.sep).includes("..") &&
+    segments[0] === "photos"
+  );
 }
 
 export async function savePhoto(bytes: Buffer, ext: string): Promise<string> {

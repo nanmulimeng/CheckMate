@@ -38,26 +38,29 @@ export async function POST(req: NextRequest) {
     if (!subject)
       return NextResponse.json({ error: "科目不存在或不属于你" }, { status: 403 });
 
-    const checkIn = await db.checkIn.create({
-      data: {
-        userId,
-        subjectId: subjectId as number,
-        date,
-        durationMinutes: durationMinutes as number,
-        note: typeof note === "string" ? note : "",
-      },
-    });
-
-    // 绑定照片（上传在 Task 7 接通）：只认当前未绑定的照片，
-    // 已挂在别的打卡上的照片不会被抢走；hasPhoto 只反映真实绑定结果。
-    if (photoIds.length > 0) {
-      const attached = await db.photo.updateMany({
-        where: { id: { in: photoIds }, checkInId: null },
-        data: { checkInId: checkIn.id },
+    // 三步写（建打卡/绑照片/回填 hasPhoto）包进同一事务：中途崩溃不会留下
+    // 「打卡存在但照片悬空」或「hasPhoto 与实际绑定不符」的半成品。
+    // 绑定仍只认当前未绑定的照片：已挂在别的打卡上的照片不会被抢走。
+    const checkIn = await db.$transaction(async (tx) => {
+      const created = await tx.checkIn.create({
+        data: {
+          userId,
+          subjectId: subjectId as number,
+          date,
+          durationMinutes: durationMinutes as number,
+          note: typeof note === "string" ? note : "",
+        },
       });
-      if (attached.count > 0)
-        await db.checkIn.update({ where: { id: checkIn.id }, data: { hasPhoto: true } });
-    }
+      if (photoIds.length > 0) {
+        const attached = await tx.photo.updateMany({
+          where: { id: { in: photoIds }, checkInId: null },
+          data: { checkInId: created.id },
+        });
+        if (attached.count > 0)
+          await tx.checkIn.update({ where: { id: created.id }, data: { hasPhoto: true } });
+      }
+      return created;
+    });
 
     revalidatePath("/");
     return NextResponse.json({ id: checkIn.id });
