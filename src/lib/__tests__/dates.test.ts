@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  beijingDateStr, beijingHour, deadlineOf, canCheckInFor,
+  beijingDateStr, deadlineOf, canCheckInFor,
   defaultCheckInDate, addDays, lastMonday, dateRange,
 } from "../dates";
 

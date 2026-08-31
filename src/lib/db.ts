@@ -13,7 +13,7 @@ import { PrismaClient } from "@/generated/prisma/client";
 const resolveUrl = () => {
   const url = process.env["DATABASE_URL"] ?? "file:./dev.db";
   const dbFile = url.replace(/^file:/, "");
-  return `file:${path.isAbsolute(dbFile) ? dbFile : path.resolve(process.cwd(), dbFile)}`;
+  return `file:${path.isAbsolute(dbFile) ? dbFile : path.resolve(/* turbopackIgnore: true */ process.cwd(), dbFile)}`;
 };
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
