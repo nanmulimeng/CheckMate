@@ -5,9 +5,20 @@ export interface WeeklyStat {
   days: number; totalMinutes: number; noProofDays: number; missedDays: number;
 }
 
+/** 该用户在本周的「应打天数」：7 天里 ≥ 注册日的部分。
+ *  注册日在周开始前（或未提供，视为老用户）→ 7；在周末之后 → 0。 */
+export function owedDays(weekStart: string, registeredOn?: string): number {
+  if (!registeredOn) return 7;
+  const weekEnd = addDays(weekStart, 6);
+  if (registeredOn <= weekStart) return 7;
+  if (registeredOn > weekEnd) return 0;
+  return dateRange(registeredOn, weekEnd).length;
+}
+
 export function computeWeekly(
   rows: { userId: number; displayName: string; date: string; durationMinutes: number; hasPhoto: boolean }[],
-  weekStart: string
+  weekStart: string,
+  registeredOnByUser?: Map<number, string>
 ): WeeklyStat[] {
   const days = new Set(dateRange(weekStart, addDays(weekStart, 6)));
   const byUser = new Map<number, WeeklyStat>();
@@ -29,7 +40,9 @@ export function computeWeekly(
     s.days = daySet.get(s.userId)!.size;
     // 口径与个人页热力图一致：当天任一条打卡带照片即“有凭证”，整天全无照片才算无凭证天
     s.noProofDays = s.days - proofSet.get(s.userId)!.size;
-    s.missedDays = 7 - s.days;
+    // 缺卡只算「注册之后应打而未打」的天：注册前的日子不算欠账，
+    // 否则新用户第一天就顶着「上周缺卡 7 天 + 奶茶候选人」开局。
+    s.missedDays = owedDays(weekStart, registeredOnByUser?.get(s.userId)) - s.days;
   }
   return [...byUser.values()];
 }

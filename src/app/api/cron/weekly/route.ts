@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cronAuthorized } from "@/lib/cron-auth";
-import { addDays, lastMonday } from "@/lib/dates";
+import { addDays, beijingDateStr, lastMonday } from "@/lib/dates";
 import { getPrisma } from "@/lib/db";
 import { sendServerChan } from "@/lib/serverchan";
 import { getSetting, setSetting } from "@/lib/settings";
-import { computeWeekly, type WeeklyStat } from "@/lib/weekly";
+import { computeWeekly, owedDays, type WeeklyStat } from "@/lib/weekly";
 
 // GET /api/cron/weekly?secret=… — 周一 00:10 由 crontab 调用。
 // 结算「上个完整周」（lastMonday 起 7 天）：全员逐人推送一行摘要，
@@ -20,22 +20,37 @@ export async function GET(req: NextRequest) {
     const weekEnd = addDays(weekStart, 6);
     const db = getPrisma();
     const [users, rows] = await Promise.all([
-      db.user.findMany({ select: { id: true, displayName: true, serverchanKey: true }, orderBy: { id: "asc" } }),
+      db.user.findMany({
+        select: { id: true, displayName: true, serverchanKey: true, createdAt: true },
+        orderBy: { id: "asc" },
+      }),
       db.checkIn.findMany({
         // date 是北京日期字符串，YYYY-MM-DD 字典序即时间序，直接用 gte/lte
         where: { date: { gte: weekStart, lte: weekEnd } },
         select: { userId: true, date: true, durationMinutes: true, hasPhoto: true, user: { select: { displayName: true } } },
       }),
     ]);
+    // 注册日按北京时区折算成日期串（与 CheckIn.date 同一口径）
+    const registeredOn = new Map(users.map((u) => [u.id, beijingDateStr(u.createdAt)]));
 
-    // computeWeekly 会漏掉区间内零打卡的用户 —— 用全员名册补齐为「缺卡 7 天」
+    // computeWeekly 会漏掉区间内零打卡的用户 —— 用全员名册补齐为「满额缺卡」
+    //（缺卡天数同样只算注册之后应打的部分）
     const computed = computeWeekly(
       rows.map((r) => ({ ...r, displayName: r.user.displayName })),
       weekStart,
+      registeredOn,
     );
     const byId = new Map(computed.map((s) => [s.userId, s]));
     const report: WeeklyStat[] = users.map(
-      (u) => byId.get(u.id) ?? { userId: u.id, displayName: u.displayName, days: 0, totalMinutes: 0, noProofDays: 0, missedDays: 7 },
+      (u) =>
+        byId.get(u.id) ?? {
+          userId: u.id,
+          displayName: u.displayName,
+          days: 0,
+          totalMinutes: 0,
+          noProofDays: 0,
+          missedDays: owedDays(weekStart, registeredOn.get(u.id)),
+        },
     );
 
     for (const u of users) {

@@ -6,10 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession } from "@/lib/auth";
-import { addDays, lastMonday, mondayOf } from "@/lib/dates";
+import { addDays, beijingDateStr, lastMonday, mondayOf } from "@/lib/dates";
 import { getPrisma } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { computeWeekly, type WeeklyStat } from "@/lib/weekly";
+import { computeWeekly, owedDays, type WeeklyStat } from "@/lib/weekly";
 
 // 登录守卫：读取 session 必须走动态渲染（与首页同款模式）
 export const dynamic = "force-dynamic";
@@ -45,18 +45,25 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
   const weekEnd = addDays(weekStart, 6);
 
   const [users, rows] = await Promise.all([
-    db.user.findMany({ select: { id: true, displayName: true }, orderBy: { id: "asc" } }),
+    db.user.findMany({
+      select: { id: true, displayName: true, createdAt: true },
+      orderBy: { id: "asc" },
+    }),
     db.checkIn.findMany({
       // date 是北京日期字符串，YYYY-MM-DD 字典序即时间序，直接用 gte/lte
       where: { date: { gte: weekStart, lte: weekEnd } },
       select: { userId: true, date: true, durationMinutes: true, hasPhoto: true, user: { select: { displayName: true } } },
     }),
   ]);
+  // 注册日按北京时区折算成日期串（与 CheckIn.date 同一口径）
+  const registeredOn = new Map(users.map((u) => [u.id, beijingDateStr(u.createdAt)]));
 
-  // computeWeekly 会漏掉区间内零打卡的用户 —— 用全员名册补齐为「缺卡 7 天」
+  // computeWeekly 会漏掉区间内零打卡的用户 —— 用全员名册补齐为「满额缺卡」
+  //（缺卡天数同样只算注册之后应打的部分）
   const computed = computeWeekly(
     rows.map((r) => ({ ...r, displayName: r.user.displayName })),
     weekStart,
+    registeredOn,
   );
   const byId = new Map(computed.map((s) => [s.userId, s]));
   const stats: WeeklyStat[] = users.map(
@@ -67,7 +74,7 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
         days: 0,
         totalMinutes: 0,
         noProofDays: 0,
-        missedDays: 7,
+        missedDays: owedDays(weekStart, registeredOn.get(u.id)),
       },
   );
   // 缺卡最多者置顶（并列时按 userId 稳定排序），候选人一眼可见
