@@ -47,3 +47,7 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# deploy.sh 本地打包的临时产物（trap 会清理，这里双保险防止误提交）
+/.release-stage/
+/.release-*.tar.gz

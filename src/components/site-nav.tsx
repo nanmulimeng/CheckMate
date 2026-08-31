@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 // 全站共享顶部导航（Server Component）：五个页面（/ /me /weekly /settings /admin）
-// 统一使用，放在各自 header 之上。/admin 链接仅管理员可见（isAdmin 来自 session）。
+// 统一使用，放在各自 header 之上。/admin 链接仅管理员可见（isAdmin 由各页面
+// 从 DB 实时读取后作为 prop 传入，不依赖 session 快照）。
 // 「打卡」是全站主操作，固定在最右侧保持醒目。
 const LINKS = [
   { href: "/", label: "首页" },
