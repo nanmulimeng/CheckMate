@@ -20,11 +20,22 @@
 # ============================================================================
 set -euo pipefail
 
-echo "==> [1/5] 检查前置（Node / sudo / 既有服务不受影响）"
+echo "==> [1/5] 检查前置（Node / 编译工具链 / sudo / 既有服务不受影响）"
 export PATH="$PATH:/usr/local/node/bin"   # sudo 与非登录 shell 的 PATH 兜底
 command -v node >/dev/null
 node -v
 sudo -n true && echo "    sudo 免密 OK"
+# better-sqlite3 需在服务器源码编译（prebuilds 要求 GLIBC_2.33，本机 glibc 2.32，
+# 详见 deploy.sh 的编译步骤）：gcc/make 系统自带，补 g++；系统 python3 是 3.6，
+# 跑不动 node-gyp 11 的 gyp 脚本（walrus 语法要 3.8+），用 python3.11
+if ! rpm -q gcc-c++ >/dev/null 2>&1; then
+  sudo yum install -y gcc-c++
+fi
+command -v g++ >/dev/null || { echo "错误：缺 g++（gcc-c++），better-sqlite3 无法编译" >&2; exit 1; }
+if ! command -v /usr/bin/python3.11 >/dev/null; then
+  sudo yum install -y python3.11
+fi
+command -v /usr/bin/python3.11 >/dev/null || { echo "错误：缺 python3.11（系统 python3 过老，node-gyp 用不了）" >&2; exit 1; }
 
 echo "==> [2/5] pm2 + 开机自启"
 if ! command -v pm2 >/dev/null; then

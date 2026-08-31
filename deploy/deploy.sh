@@ -20,10 +20,9 @@
 #   * 依赖安装用「全量 install + 结尾 pnpm prune --prod」而不是 --prod：
 #     prisma CLI / tsx / dotenv 都在 devDependencies，migrate deploy 与 seed 需要它们；
 #     先全量装、跑完迁移再剪枝，运行时最终仍是纯生产依赖。
-#   * 依赖安装加 --ignore-scripts：better-sqlite3 v13 的原生二进制随包分发
-#    （prebuilds/linux-x64.node，node-gyp-build 运行时加载），构建脚本无需执行；
-#    2026-08-31 实测：开发机（Windows 无 VS）与服务器（无 g++）上编译都会失败，
-#    且失败会让 pnpm 以非零码退出、中断部署——跳过构建是唯一正确姿势。
+#   * 依赖安装加 --ignore-scripts：绝大多数包的构建脚本只是拖慢部署/引入供应链
+#    风险；better-sqlite3 的例外（prebuilt 的 GLIBC 门槛，服务器须源码编译）在
+#    [4/5] 的编译步骤里单独处理，不走 pnpm 的构建脚本机制。
 #   * .next/static 直接打进发布包（每次部署都带上），而不是只在首次部署时 cp：
 #     每次构建的静态资源 hash 都会变，只拷一次会导致后续版本 JS/CSS 404。
 # ============================================================================
@@ -86,6 +85,25 @@ tar xzf release.tar.gz && rm release.tar.gz
 # linux-x64 二进制随包分发于 prebuilds/，无需构建；服务器无 g++，编译必挂
 rm -rf node_modules   # 发布包本无 node_modules，幂等双保险（历史版本曾携带）
 pnpm install --ignore-scripts
+
+# ── better-sqlite3 服务器源码编译（2026-08-31 实战引入）────────────────────
+# 13.x 随包分发的 prebuilds/linux-x64.node 要求 GLIBC_2.33，本服务器
+# （Alibaba Cloud Linux 3）glibc 只有 2.32 → 预编译产物 dlopen 即炸（seed 首个
+# upsert 就 ERR_DLOPEN_FAILED）。而它没法"自动编译"：
+#   1) 13.x 没有 install 脚本，--ignore-scripts 与否都不触发编译；
+#   2) binding.gyp 在 prebuilds/<plat>.node 存在时把编译 target 变空壳
+#      （prebuild_exists 检测），不删它连手动 rebuild 都只 TOUCH 不链接；
+#   3) binding.js 运行时【优先】加载 prebuilds/，不删它编译了也不用。
+# 所以顺序是：先删 prebuilt，再 node-gyp rebuild，产物落 build/Release/，
+# 运行时自然回落加载。node-gyp 用 npm 自带捆的那份（省一个依赖），编译要
+# gcc-c++ 与 python3.11（系统 python3 是 3.6，gyp 脚本要 3.8+），由 setup.sh 装；
+# --nodedir 指向服务器自带的 node 头文件，省去 node-gyp 联网下载 headers。
+SQLITE3_PKG="$(node -e "console.log(require('path').dirname(require.resolve('better-sqlite3/package.json')))")"
+rm -f "$SQLITE3_PKG/prebuilds/linux-x64.node"
+NODE_GYP="/usr/local/node/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js"
+[ -f "$NODE_GYP" ] || { echo "    错误：找不到 npm 捆带的 node-gyp（$NODE_GYP）" >&2; exit 1; }
+node "$NODE_GYP" rebuild --release --nodedir=/usr/local/node --python=/usr/bin/python3.11 \
+  --directory="$SQLITE3_PKG" || { echo "    错误：better-sqlite3 编译失败（gcc-c++ / python3.11 装了吗？跑 deploy/setup.sh）" >&2; exit 1; }
 
 # 生成 Prisma Client（输出到 src/generated/prisma，随 .gitignore 不进发布包，
 # 必须在服务器上现场生成）：seed.ts 直接 import 它，缺了首个部署就会 module-not-found。
