@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import LogoutButton from "@/components/logout-button";
+import SiteNav from "@/components/site-nav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,7 +31,10 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
   if (!session.userId) redirect("/login");
 
   const db = getPrisma();
-  const me = await db.user.findUnique({ where: { id: session.userId }, select: { id: true } });
+  const me = await db.user.findUnique({
+    where: { id: session.userId },
+    select: { id: true, isAdmin: true },
+  });
   if (!me) redirect("/login");
 
   const latest = lastMonday(new Date());
@@ -77,6 +81,7 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
 
   return (
     <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-4 px-4 py-6">
+      <SiteNav isAdmin={me.isAdmin} />
       <header className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold">周结算</h1>
@@ -84,12 +89,7 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
             {weekStart} ~ {weekEnd}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button asChild size="sm" variant="outline">
-            <Link href="/">今日动态</Link>
-          </Button>
-          <LogoutButton />
-        </div>
+        <LogoutButton />
       </header>
 
       <nav aria-label="周选择" className="flex items-center justify-between">

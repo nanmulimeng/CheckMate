@@ -1,0 +1,3 @@
+# 部署件一律 LF：这些文件会被 scp 到 Linux 服务器用 bash 执行/解析，
+# CRLF 会让 bash 报 "\r: command not found"。本文件覆盖仓库级 autocrlf 设置。
+* text eol=lf

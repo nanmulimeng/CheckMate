@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import Heatmap from "@/components/heatmap";
 import LogoutButton from "@/components/logout-button";
+import SiteNav from "@/components/site-nav";
 import SubjectStats from "@/components/subject-stats";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
@@ -20,7 +19,7 @@ export default async function MePage() {
 
   const me = await getPrisma().user.findUnique({
     where: { id: session.userId },
-    select: { id: true },
+    select: { id: true, isAdmin: true },
   });
   if (!me) redirect("/login");
 
@@ -29,6 +28,7 @@ export default async function MePage() {
 
   return (
     <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-4 px-4 py-6">
+      <SiteNav isAdmin={me.isAdmin} />
       <header className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold">我的统计</h1>
@@ -36,15 +36,7 @@ export default async function MePage() {
             热力图近 {HEATMAP_WEEKS} 周 · {stats.today}（北京时间）
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button asChild size="sm" variant="outline">
-            <Link href="/">今日动态</Link>
-          </Button>
-          <Button asChild size="sm">
-            <Link href="/checkin/new">记一笔</Link>
-          </Button>
-          <LogoutButton />
-        </div>
+        <LogoutButton />
       </header>
 
       <section aria-label="累计统计" className="grid grid-cols-3 gap-2">

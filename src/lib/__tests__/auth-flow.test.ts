@@ -47,6 +47,15 @@ describe("注册校验规则", () => {
     expect(validateRegistration("a", "secret123", "WRONG000", invite)?.status).toBe(400);
   });
 
+  it("邀请码未初始化（Setting 为空）→ 503 fail-closed，而不是空码匹配放行", () => {
+    // 空邀请码 + 空配置：绝不能因为 ""==="" 而放任何人进来
+    expect(validateRegistration("alice", "secret123", "", "")).toEqual({
+      status: 503,
+      error: "邀请码未初始化，请联系管理员",
+    });
+    expect(validateRegistration("alice", "secret123", "WHATEVER", "")?.status).toBe(503);
+  });
+
   it("全部合法 → null（放行）", () => {
     expect(validateRegistration("alice", "secret123", invite, invite)).toBeNull();
   });

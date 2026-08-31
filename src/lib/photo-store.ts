@@ -24,3 +24,13 @@ export async function readPhoto(rel: string): Promise<Buffer> {
   if (!photoPathIsSafe(rel)) throw new Error("unsafe path");
   return fs.readFile(path.join(/*turbopackIgnore: true*/ DATA_DIR, rel));
 }
+
+/** 删除照片文件；ENOENT（文件已不在）静默忽略，其余错误抛给调用方。 */
+export async function deletePhoto(rel: string): Promise<void> {
+  if (!photoPathIsSafe(rel)) throw new Error("unsafe path");
+  try {
+    await fs.unlink(path.join(/*turbopackIgnore: true*/ DATA_DIR, rel));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+}

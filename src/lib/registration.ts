@@ -24,6 +24,9 @@ export function validateRegistration(
   ) {
     return { status: 400, error: "用户名≥2位，密码≥6位" };
   }
+  // fail-closed：Setting.invite_code 为空（如 seed 未跑/被清空）时拒绝注册，
+  // 否则「空邀请码匹配空配置」会放任何人进来。
+  if (!expectedInviteCode) return { status: 503, error: "邀请码未初始化，请联系管理员" };
   if (inviteCode !== expectedInviteCode) return { status: 403, error: "邀请码错误" };
   return null;
 }
