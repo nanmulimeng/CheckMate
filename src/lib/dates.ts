@@ -32,12 +32,15 @@ export function defaultCheckInDate(now: Date): string {
   return beijingHour(now) < 1 ? addDays(today, -1) : today;
 }
 
-export function lastMonday(now: Date): string {
-  const today = beijingDateStr(now);
-  const [y, m, d] = today.split("-").map(Number);
+/** dateStr 所在周的周一（字符串日期运算，纯函数） */
+export function mondayOf(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=周日
-  const back = dow === 0 ? 6 : dow - 1;
-  return addDays(today, -back - 7);
+  return addDays(dateStr, dow === 0 ? -6 : 1 - dow);
+}
+
+export function lastMonday(now: Date): string {
+  return addDays(mondayOf(beijingDateStr(now)), -7);
 }
 
 export function dateRange(start: string, end: string): string[] {

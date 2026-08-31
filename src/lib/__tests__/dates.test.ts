@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   beijingDateStr, deadlineOf, canCheckInFor,
-  defaultCheckInDate, addDays, lastMonday, dateRange,
+  defaultCheckInDate, addDays, lastMonday, mondayOf, dateRange,
 } from "../dates";
 
 // 北京 = UTC+8 恒定（无夏令时）。UTC 时刻 X 的北京时刻 = X+8h。
@@ -47,6 +47,11 @@ describe("defaultCheckInDate（凌晨归属）", () => {
 describe("周与区间", () => {
   it("2026-08-31(周一)的 lastMonday = 2026-08-24", () => {
     expect(lastMonday(new Date("2026-08-31T04:00:00Z"))).toBe("2026-08-24");
+  });
+  it("mondayOf：周一返回自身，周日回到 6 天前", () => {
+    expect(mondayOf("2026-08-31")).toBe("2026-08-31"); // 周一
+    expect(mondayOf("2026-09-03")).toBe("2026-08-31"); // 周四
+    expect(mondayOf("2026-09-06")).toBe("2026-08-31"); // 周日
   });
   it("dateRange 闭区间", () => {
     expect(dateRange("2026-08-24", "2026-08-26")).toEqual(["2026-08-24", "2026-08-25", "2026-08-26"]);
