@@ -60,8 +60,10 @@ rm -f "$STAGE/.env"
 mkdir -p "$STAGE/.next"
 cp -r .next/static "$STAGE/.next/static"
 cp -r public "$STAGE/public"
-# 迁移/seed 与包管理清单（package.json 覆盖 standalone 里那份最小化的，供 pnpm install 用）
-cp package.json pnpm-lock.yaml "$STAGE/"
+# 迁移/seed 与包管理清单（package.json 覆盖 standalone 里那份最小化的，供 pnpm install 用；
+# pnpm-workspace.yaml 是 pnpm 11 的 settings 载体，带 better-sqlite3 的 override，缺了服务器
+# 安装会重新解析、override 失效 → adapter 又装回 12.x 空壳）
+cp package.json pnpm-lock.yaml pnpm-workspace.yaml "$STAGE/"
 # set -euo pipefail 下 `[ -f x ] && cp` 在文件缺失时会以 1 退出整个脚本，改用 if
 if [ -f prisma7.config.ts ]; then cp prisma7.config.ts "$STAGE/"; fi
 cp -r prisma "$STAGE/prisma"

@@ -1,7 +1,7 @@
-allowBuilds:
-  '@prisma/engines': true
-  better-sqlite3: true
-  esbuild: false
-  prisma: true
-  sharp: false
-  unrs-resolver: false
+# pnpm 11 的 settings 载体（单包项目也用它；package.json 的 pnpm 字段已被忽略）。
+# adapter 7.10.0 自带依赖 better-sqlite3 ^12.6.0，12.x 无随包二进制、--ignore-scripts
+# 下是空壳（服务器 seed 即炸于此）；统一到 13.0.3（prebuilds 随包分发，免编译，
+# 与项目直接依赖同版本）。本文件必须随发布包上传（deploy.sh 组装步骤），否则
+# 服务器 pnpm install 因缺 settings 重新解析，override 失效。
+overrides:
+  "@prisma/adapter-better-sqlite3>better-sqlite3": ^13.0.3
