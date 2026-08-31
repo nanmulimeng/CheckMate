@@ -30,6 +30,10 @@ model Subject {
   sortOrder Int       @default(0)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   checkins  CheckIn[]
+
+  // 应用层查重在先（POST/PATCH 都 409），这里是并发窗口与直改库的兜底；
+  // 复合 unique 最左前缀即 userId，科目列表查询也走它，无需单列索引
+  @@unique([userId, name])
 }
 
 model CheckIn {
@@ -57,6 +61,9 @@ model Photo {
   filePath  String
   createdAt DateTime @default(now())
   checkIn   CheckIn? @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+
+  // cleanup 扫 checkInId IS NULL、绑定/级联查 checkInId，都需要它
+  @@index([checkInId])
 }
 
 model Comment {
@@ -67,6 +74,9 @@ model Comment {
   createdAt DateTime @default(now())
   checkIn   CheckIn  @relation(fields: [checkInId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 动态流逐条打卡取评论走 checkInId
+  @@index([checkInId])
 }
 
 model Like {
