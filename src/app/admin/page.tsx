@@ -38,7 +38,7 @@ export default async function AdminPage() {
   if (!me) redirect("/login");
   if (!me.isAdmin) redirect("/");
 
-  const [members, examDate, remindHour, inviteCode, cronSecret] = await Promise.all([
+  const [members, examDate, remindHour, inviteCode] = await Promise.all([
     db.user.findMany({
       orderBy: { id: "asc" },
       select: { id: true, username: true, displayName: true, createdAt: true, serverchanKey: true },
@@ -46,7 +46,8 @@ export default async function AdminPage() {
     getSetting("exam_date"),
     getSetting("remind_hour"),
     getSetting("invite_code"),
-    getSetting("cron_secret"),
+    // cron_secret 刻意不查：它只该活在服务端（cron 入口的鉴权用），
+    // 任何走到客户端的路径都会让它进 RSC payload / HTML。
   ]);
 
   return (
@@ -58,7 +59,7 @@ export default async function AdminPage() {
           <p className="text-xs text-muted-foreground">成员、全局设置与手动提醒</p>
         </div>
         <div className="flex items-center gap-2">
-          <RemindNowButton secret={cronSecret} />
+          <RemindNowButton />
           <LogoutButton />
         </div>
       </header>
