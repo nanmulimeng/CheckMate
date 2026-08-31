@@ -14,6 +14,15 @@ importers:
       '@prisma/client':
         specifier: ^7.10.0
         version: 7.10.0(prisma@7.10.0(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@13.0.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.9.3))(typescript@5.9.3)
+      '@prisma/client-runtime-utils':
+        specifier: ^7.10.0
+        version: 7.10.0
+      '@prisma/debug':
+        specifier: ^7.10.0
+        version: 7.10.0
+      '@prisma/driver-adapter-utils':
+        specifier: ^7.10.0
+        version: 7.10.0
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3

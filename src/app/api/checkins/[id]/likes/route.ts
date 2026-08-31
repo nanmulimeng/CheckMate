@@ -29,7 +29,14 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
     });
     if (existing)
       await db.like.delete({ where: { checkInId_userId: { checkInId: parsed, userId } } });
-    else await db.like.create({ data: { checkInId: parsed, userId } });
+    else {
+      try {
+        await db.like.create({ data: { checkInId: parsed, userId } });
+      } catch (e) {
+        // 并发双击：另一个请求已抢先创建，撞唯一约束——视为已点赞而非 500
+        if ((e as { code?: string }).code !== "P2002") throw e;
+      }
+    }
 
     const count = await db.like.count({ where: { checkInId: parsed } });
     return NextResponse.json({ liked: !existing, count });

@@ -68,7 +68,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   }
 }
 
-// DELETE /api/checkins/[id] — 删除（仅本人；照片/评论/点赞由 Prisma 级联删除）
+// DELETE /api/checkins/[id] — 删除（仅本人，且打卡日期未过截止；照片/评论/点赞由 Prisma 级联删除）
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { id: userId } = await requireUser();
@@ -77,6 +77,9 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
 
     const checkIn = await findOwnCheckIn(parsed, userId);
     if (!checkIn) return NextResponse.json({ error: "打卡不存在" }, { status: 403 });
+    // 与 PATCH 同一道截止锁：已结算的历史打卡不允许删除，否则可回溯改动周报/streak
+    if (!canCheckInFor(checkIn.date, new Date()))
+      return NextResponse.json({ error: "该打卡已锁定" }, { status: 403 });
 
     await getPrisma().checkIn.delete({ where: { id: parsed } });
 

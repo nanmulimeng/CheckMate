@@ -14,7 +14,7 @@ export async function getSession(): Promise<IronSession<SessionData>> {
     cookieOptions: {
       httpOnly: true,
       sameSite: "lax",
-      // v1 以 HTTP+IP 直连部署（8080，无域名/TLS）：浏览器会在非 localhost 的
+      // v1 以 HTTP+IP 直连部署（3210，无域名/TLS）：浏览器会在非 localhost 的
       // HTTP 下拒收 Secure cookie，导致生产登录静默失效。等域名+HTTPS 上线后，
       // 在部署环境设 SESSION_COOKIE_SECURE=1 开启。
       secure: process.env.SESSION_COOKIE_SECURE === "1",

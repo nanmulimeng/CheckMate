@@ -21,13 +21,14 @@
 set -euo pipefail
 
 echo "==> [1/5] 检查前置（Node / sudo / 既有服务不受影响）"
+export PATH="$PATH:/usr/local/node/bin"   # sudo 与非登录 shell 的 PATH 兜底
 command -v node >/dev/null
 node -v
 sudo -n true && echo "    sudo 免密 OK"
 
 echo "==> [2/5] pm2 + 开机自启"
 if ! command -v pm2 >/dev/null; then
-  sudo npm i -g pm2
+  sudo env PATH="$PATH" npm i -g pm2
 fi
 # systemd unit 只建一次（幂等）；pm2 startup 需以 root 运行并指定实际运行用户
 if [ ! -f /etc/systemd/system/pm2-nanmu.service ]; then
@@ -37,7 +38,7 @@ pm2 -v
 
 echo "==> [3/5] pnpm（corepack 方式；禁用下载确认交互）"
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-sudo corepack enable
+sudo env PATH="$PATH" corepack enable
 corepack prepare pnpm@latest --activate
 pnpm --version
 
@@ -45,18 +46,39 @@ echo "==> [4/5] 数据与发布目录"
 sudo mkdir -p /var/lib/checkmate/photos /var/lib/checkmate/backups /opt/checkmate
 sudo chown -R nanmu:nanmu /var/lib/checkmate /opt/checkmate
 
-echo "==> [5/5] /etc/crontab（业务 cron + 备份；幂等：已有则跳过）"
+echo "==> [5/5] /etc/crontab（业务 cron + 备份；幂等：已有则跳过）+ 备份脚本"
 # __SECRET__ 占位符由 deploy/deploy.sh 在首次部署时用生产库 Setting.cron_secret 替换。
 # 应用监听 0.0.0.0:3210（直连对外），cron 走本机回环即可。
 # remind 是每小时整点打点：到不到提醒小时由应用里的 Setting.remind_hour 决定
 #（管理员在 /admin 改，即时生效，不用回来改 crontab）。
-# 备份行打包照片目录 + SQLite 库文件，只保留最近 7 份。
+# weekly 定在周一 01:10：补卡窗口开到次日北京 01:00（src/lib/dates.ts 的截止），
+# 结算必须等窗口关上再跑，否则凌晨补的周日卡会漏出周报。
+# 备份走 backup.sh：SQLite 在线快照（避免直接 tar 运行中的库文件拿到撕裂副本）
+# + 照片目录，保留最近 7 份，输出进 backups/backup.log。
+sudo tee /opt/checkmate/backup.sh >/dev/null <<'EOF'
+#!/usr/bin/env bash
+# 每日 04:00 由 /etc/crontab 调用；输出重定向到 backups/backup.log。
+set -u
+DATA=/var/lib/checkmate
+BACKUPS=$DATA/backups
+STAMP="$(date +%F)"
+echo "===== $(date '+%F %T') backup start"
+cd /opt/checkmate/current || { echo "ERROR: /opt/checkmate/current 不存在"; exit 1; }
+node -e 'require("better-sqlite3")("/var/lib/checkmate/prisma.db").backup("/var/lib/checkmate/backups/prisma-snapshot.db").then(()=>console.log("sqlite snapshot ok"))' \
+  || { echo "ERROR: sqlite 快照失败"; exit 1; }
+tar czf "$BACKUPS/checkmate-$STAMP.tar.gz" -C / var/lib/checkmate/photos var/lib/checkmate/backups/prisma-snapshot.db \
+  || { echo "ERROR: tar 打包失败"; exit 1; }
+ls -t "$BACKUPS"/checkmate-*.tar.gz | tail -n +8 | xargs -r rm --
+echo "===== $(date '+%F %T') backup done: checkmate-$STAMP.tar.gz ($(du -h "$BACKUPS/checkmate-$STAMP.tar.gz" | cut -f1))"
+EOF
+sudo chmod +x /opt/checkmate/backup.sh
+
 if ! sudo grep -q 'api/cron/remind' /etc/crontab; then
   sudo tee -a /etc/crontab >/dev/null <<'EOF'
 0 * * * * root curl -s "http://127.0.0.1:3210/api/cron/remind?secret=__SECRET__" >/dev/null
-10 0 * * 1 root curl -s "http://127.0.0.1:3210/api/cron/weekly?secret=__SECRET__" >/dev/null
+10 1 * * 1 root curl -s "http://127.0.0.1:3210/api/cron/weekly?secret=__SECRET__" >/dev/null
 30 3 * * * root curl -s "http://127.0.0.1:3210/api/cron/cleanup?secret=__SECRET__" >/dev/null
-0 4 * * * root tar czf /var/lib/checkmate/backups/checkmate-$(date +\%F).tar.gz /var/lib/checkmate/photos /var/lib/checkmate/prisma.db 2>/dev/null && ls -t /var/lib/checkmate/backups/*.tar.gz | tail -n +8 | xargs -r rm --
+0 4 * * * root /opt/checkmate/backup.sh >> /var/lib/checkmate/backups/backup.log 2>&1
 EOF
   echo "    已写入（__SECRET__ 待 deploy.sh 替换）"
 else

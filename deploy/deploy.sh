@@ -53,13 +53,17 @@ rm -rf "$STAGE" && mkdir -p "$STAGE"
 tar -C .next/standalone --exclude='./node_modules' -cf - . | tar -C "$STAGE" -xf -
 # 本地跑 standalone 时 DATA_DIR 默认落 cwd/data，会被 trace 进产物——运行时数据绝不能进发布包
 rm -rf "$STAGE/data"
+# Next 构建还会把开发机根目录的 .env 复制进 standalone 产物（里面是 dev 库地址/dev 密钥）：
+# 既不能让它上服务器，也要防异常启动路径下被 @next/env 拿去兜底——生产环境只认 PM2 env
+rm -f "$STAGE/.env"
 # 静态资源必须随每次构建一起发布（hash 文件名，见文件头说明）
 mkdir -p "$STAGE/.next"
 cp -r .next/static "$STAGE/.next/static"
 cp -r public "$STAGE/public"
 # 迁移/seed 与包管理清单（package.json 覆盖 standalone 里那份最小化的，供 pnpm install 用）
 cp package.json pnpm-lock.yaml "$STAGE/"
-[ -f prisma7.config.ts ] && cp prisma7.config.ts "$STAGE/"
+# set -euo pipefail 下 `[ -f x ] && cp` 在文件缺失时会以 1 退出整个脚本，改用 if
+if [ -f prisma7.config.ts ]; then cp prisma7.config.ts "$STAGE/"; fi
 cp -r prisma "$STAGE/prisma"
 tar -C "$STAGE" -czf ".release-$TS.tar.gz" .
 echo "    发布包：.release-$TS.tar.gz（$(du -h ".release-$TS.tar.gz" | cut -f1)）"
@@ -88,12 +92,10 @@ pnpm exec prisma generate
 export DATABASE_URL='file:/var/lib/checkmate/prisma.db'
 pnpm exec prisma migrate deploy
 
-FIRST_DEPLOY=0
-if [ ! -L "$REMOTE_ROOT/current" ]; then
-  FIRST_DEPLOY=1
-  echo "    首次部署：执行 seed（生成邀请码 / cron_secret 等初始 Setting）"
-  pnpm exec tsx prisma/seed.ts
-fi
+# seed 每次部署都跑：内部全是 upsert（update:{} 不覆盖管理员已改过的值），幂等。
+# 若只在"首次部署"跑：日后库被清空/换库而 current 软链还在时，邀请码/cron_secret
+# 永远补不回来（注册 503、cron 全 401）——判断维度应是"库缺不缺"而非"部署过没有"。
+pnpm exec tsx prisma/seed.ts
 
 # 剪掉 devDependencies，运行时保持纯生产依赖
 pnpm prune --prod
@@ -148,6 +150,27 @@ fi
 
 pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save
+
+# 健康检查：进程起不来（缺模块/配置错）时不该打印"全部完成"。
+# standalone 首启要几秒，重试 10 次每次隔 2 秒；/login 是静态页，最轻量。
+CODE=""
+for i in $(seq 1 10); do
+  CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3210/login || true)"
+  [ "$CODE" = "200" ] && break
+  sleep 2
+done
+if [ "$CODE" != "200" ]; then
+  echo "    错误：健康检查失败（/login 返回 ${CODE:-无响应}），最近日志：" >&2
+  pm2 logs checkmate --lines 30 --nostream >&2 || true
+  exit 1
+fi
+echo "    健康检查通过（/login 200）"
+
+# 清理旧版本，保留最近 5 个（current 指向的最新排在最前，不会误删；失败不阻断部署）
+ls -1t "$REMOTE_ROOT/releases" | tail -n +6 | while read -r old; do
+  rm -rf "$REMOTE_ROOT/releases/$old"
+done
+
 echo "    部署完成：$RELEASE_DIR"
 REMOTE
 
