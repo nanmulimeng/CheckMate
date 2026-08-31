@@ -49,6 +49,8 @@ echo "==> [2/5] 组装发布包"
 rm -rf "$STAGE" && mkdir -p "$STAGE"
 # standalone 主体（server.js + 精简 node_modules + .next/server 产物）
 cp -r .next/standalone/. "$STAGE/"
+# 本地跑 standalone 时 DATA_DIR 默认落 cwd/data，会被 trace 进产物——运行时数据绝不能进发布包
+rm -rf "$STAGE/data"
 # 静态资源必须随每次构建一起发布（hash 文件名，见文件头说明）
 mkdir -p "$STAGE/.next"
 cp -r .next/static "$STAGE/.next/static"

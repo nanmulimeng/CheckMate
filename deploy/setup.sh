@@ -50,12 +50,14 @@ chown -R root:root /var/lib/seti
 echo "==> [6/7] /etc/crontab（业务 cron + 备份；幂等：已有 seti 行则跳过）"
 # __SECRET__ 占位符由 deploy/deploy.sh 在首次部署时用生产库 Setting.cron_secret 替换。
 # 业务 cron 走本机回环访问 Next（127.0.0.1:3000），不暴露公网。
+# remind 是每小时整点打点：到不到提醒小时由应用里的 Setting.remind_hour 决定
+#（管理员在 /admin 改，即时生效，不用回来改 crontab）。
 # 备份行打包照片目录 + SQLite 库文件，只保留最近 7 份。
 if grep -q 'api/cron/remind' /etc/crontab; then
   echo "    /etc/crontab 已有 seti 任务，跳过"
 else
   cat >> /etc/crontab <<'EOF'
-0 21 * * * root curl -s "http://127.0.0.1:3000/api/cron/remind?secret=__SECRET__" >/dev/null
+0 * * * * root curl -s "http://127.0.0.1:3000/api/cron/remind?secret=__SECRET__" >/dev/null
 10 0 * * 1 root curl -s "http://127.0.0.1:3000/api/cron/weekly?secret=__SECRET__" >/dev/null
 30 3 * * * root curl -s "http://127.0.0.1:3000/api/cron/cleanup?secret=__SECRET__" >/dev/null
 0 4 * * * root tar czf /var/lib/seti/backups/seti-$(date +\%F).tar.gz /var/lib/seti/photos /var/lib/seti/prisma.db 2>/dev/null && ls -t /var/lib/seti/backups/*.tar.gz | tail -n +8 | xargs -r rm --

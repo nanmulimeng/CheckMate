@@ -65,7 +65,7 @@ export default function AdminSettingsForm({
       <CardHeader>
         <CardTitle className="text-sm font-medium">全局设置</CardTitle>
         <CardDescription className="text-xs">
-          考试日期用于首页倒计时；提醒小时是每日催学推送的触发点；邀请码给新成员注册用。
+          考试日期用于首页倒计时；提醒小时即时生效（每小时整点检查，到设定小时才推送）；邀请码给新成员注册用。
         </CardDescription>
       </CardHeader>
       <CardContent>

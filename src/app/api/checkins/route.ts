@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { AuthError, requireUser } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
 import { canCheckInFor, defaultCheckInDate } from "@/lib/dates";
-import { validateCheckInPayload } from "@/lib/checkin-validate";
+import { validateCheckInPayload, validatePhotoIds } from "@/lib/checkin-validate";
 
 // POST /api/checkins — 创建打卡
 // body: { subjectId, date?, durationMinutes, note?, photoIds? } → { id }
@@ -28,13 +28,10 @@ export async function POST(req: NextRequest) {
     if (!canCheckInFor(date, new Date()))
       return NextResponse.json({ error: "已过截止时间，不可补卡" }, { status: 403 });
 
-    // photoIds 可选：正整数数组，去重
-    let photoIds: number[] = [];
-    if (rawPhotoIds != null) {
-      if (!Array.isArray(rawPhotoIds) || !rawPhotoIds.every((v) => Number.isInteger(v) && (v as number) > 0))
-        return NextResponse.json({ error: "照片参数不合法" }, { status: 400 });
-      photoIds = [...new Set(rawPhotoIds as number[])];
-    }
+    // photoIds 可选：正整数数组、最多 3 张（规则收口在 checkin-validate 纯函数）
+    const photoError = validatePhotoIds(rawPhotoIds);
+    if (photoError) return NextResponse.json({ error: photoError }, { status: 400 });
+    const photoIds = rawPhotoIds == null ? [] : [...new Set(rawPhotoIds as number[])];
 
     const db = getPrisma();
     const subject = await db.subject.findFirst({ where: { id: subjectId as number, userId } });
