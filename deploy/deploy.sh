@@ -47,8 +47,10 @@ pnpm build
 
 echo "==> [2/5] 组装发布包"
 rm -rf "$STAGE" && mkdir -p "$STAGE"
-# standalone 主体（server.js + 精简 node_modules + .next/server 产物）
-cp -r .next/standalone/. "$STAGE/"
+# standalone 主体（server.js + .next/server 产物）。node_modules 不打包，原因有二：
+# pnpm 的符号链接结构在 Windows 上 cp/tar 无法原样复制；且服务器端会重装依赖（见 [4/5]，
+# Windows trace 出来的原生二进制在 Linux 不可用）。tar 管道替代 cp -r，同时避开 symlink。
+tar -C .next/standalone --exclude='./node_modules' -cf - . | tar -C "$STAGE" -xf -
 # 本地跑 standalone 时 DATA_DIR 默认落 cwd/data，会被 trace 进产物——运行时数据绝不能进发布包
 rm -rf "$STAGE/data"
 # 静态资源必须随每次构建一起发布（hash 文件名，见文件头说明）
@@ -73,10 +75,10 @@ TS="$1"; RELEASE_DIR="$2"; REMOTE_ROOT="$3"
 cd "$RELEASE_DIR"
 tar xzf release.tar.gz && rm release.tar.gz
 
-# standalone 自带的 node_modules 是开发机（Windows）上 trace 出来的，
-# 原生二进制在 Linux 不可用 → 删掉重装（--ignore-scripts：better-sqlite3 v13 的
-# linux-x64 二进制随包分发于 prebuilds/，无需构建；服务器无 g++，编译必挂）
-rm -rf node_modules
+# 发布包不带 node_modules（Windows 复制不了 pnpm 的符号链接，且原生二进制平台不
+# 通用，见 [2/5]）→ 服务器现场重装。--ignore-scripts：better-sqlite3 v13 的
+# linux-x64 二进制随包分发于 prebuilds/，无需构建；服务器无 g++，编译必挂
+rm -rf node_modules   # 发布包本无 node_modules，幂等双保险（历史版本曾携带）
 pnpm install --ignore-scripts
 
 # 生成 Prisma Client（输出到 src/generated/prisma，随 .gitignore 不进发布包，
