@@ -23,8 +23,7 @@ export async function POST(req: NextRequest) {
     }
 
     const session = await getSession();
-    session.userId = user.id;
-    session.isAdmin = user.isAdmin;
+    session.userId = user.id; // isAdmin 不进 session：requireUser 每次查库取新鲜值
     await session.save();
     clearLoginFails(username);
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AuthError, requireUser } from "@/lib/auth";
+import { AuthError, getSession, requireUser } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { sendServerChan } from "@/lib/serverchan";
@@ -61,7 +61,17 @@ export async function PATCH(req: NextRequest) {
       data,
       select: { displayName: true, serverchanKey: true },
     });
-    return NextResponse.json({ ok: true, displayName: updated.displayName, hasKey: !!updated.serverchanKey });
+
+    // 改密成功即吊销当前 session（iron-session 无服务端会话表，destroy 是
+    // 清 cookie 的最佳手段）：不留「密码改了、旧登录还挂着」的窗口，
+    // 前端收到 relogin:true 后跳 /login 重新认证。只改昵称/SendKey 不吊销。
+    let relogin = false;
+    if (data.passwordHash !== undefined) {
+      const s = await getSession();
+      await s.destroy();
+      relogin = true;
+    }
+    return NextResponse.json({ ok: true, relogin, displayName: updated.displayName, hasKey: !!updated.serverchanKey });
   } catch (e) {
     if (e instanceof AuthError)
       return NextResponse.json({ error: e.message }, { status: e.status });

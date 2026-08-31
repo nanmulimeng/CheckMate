@@ -4,6 +4,7 @@ import { AuthError, requireUser } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
 import { canCheckInFor } from "@/lib/dates";
 import { validateCheckInPayload } from "@/lib/checkin-validate";
+import { deletePhoto } from "@/lib/photo-store";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -68,20 +69,35 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   }
 }
 
-// DELETE /api/checkins/[id] — 删除（仅本人，且打卡日期未过截止；照片/评论/点赞由 Prisma 级联删除）
+// DELETE /api/checkins/[id] — 删除（仅本人，且打卡日期未过截止）。
+// 照片/评论/点赞的 DB 行由 Prisma 级联删除；照片的磁盘文件级联不到，
+// 先取路径、删库后逐个 unlink（与 cron cleanup 同款容错：单个文件失败
+// 只记日志 —— 库行已删，别让一条坏文件把整个请求打成 500）。
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const { id: userId } = await requireUser();
     const parsed = parseId((await ctx.params).id);
     if (parsed instanceof NextResponse) return parsed;
 
+    const db = getPrisma();
     const checkIn = await findOwnCheckIn(parsed, userId);
     if (!checkIn) return NextResponse.json({ error: "打卡不存在" }, { status: 403 });
     // 与 PATCH 同一道截止锁：已结算的历史打卡不允许删除，否则可回溯改动周报/streak
     if (!canCheckInFor(checkIn.date, new Date()))
       return NextResponse.json({ error: "该打卡已锁定" }, { status: 403 });
 
-    await getPrisma().checkIn.delete({ where: { id: parsed } });
+    const photos = await db.photo.findMany({
+      where: { checkInId: parsed },
+      select: { id: true, filePath: true },
+    });
+    await db.checkIn.delete({ where: { id: parsed } });
+    for (const p of photos) {
+      try {
+        await deletePhoto(p.filePath); // ENOENT（文件已不在）静默忽略
+      } catch (e) {
+        console.error(`[api/checkins DELETE] 照片文件删除失败 photo=${p.id} path=${p.filePath}`, e);
+      }
+    }
 
     revalidatePath("/");
     return NextResponse.json({ id: parsed });

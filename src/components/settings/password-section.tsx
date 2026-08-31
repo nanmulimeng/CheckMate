@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,7 @@ import {
 
 // 修改密码：旧密码 + 新密码（≥8 位）+ 确认。旧密码错误 → 403 行内提示。
 export default function PasswordSection() {
+  const router = useRouter();
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -34,12 +36,18 @@ export default function PasswordSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: newPassword, oldPassword }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as { error?: string; relogin?: boolean };
       if (res.ok) {
         setOldPassword("");
         setNewPassword("");
         setConfirm("");
-        setMsg({ ok: true, text: "密码已修改" });
+        // 改密即吊销 session：服务端已清 cookie，这里引导重新登录
+        if (data.relogin) {
+          setMsg({ ok: true, text: "密码已修改，即将转到登录页…" });
+          setTimeout(() => router.push("/login"), 1200);
+        } else {
+          setMsg({ ok: true, text: "密码已修改" });
+        }
       } else {
         setMsg({ ok: false, text: data.error ?? "修改失败" });
       }

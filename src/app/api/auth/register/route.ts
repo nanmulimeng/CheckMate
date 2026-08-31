@@ -34,8 +34,7 @@ export async function POST(req: NextRequest) {
 
     // 注册即登录：前端成功后 router.push("/") 才不会被 / 的登录守卫打回
     const session = await getSession();
-    session.userId = user.id;
-    session.isAdmin = user.isAdmin;
+    session.userId = user.id; // isAdmin 不进 session：requireUser 每次查库取新鲜值
     await session.save();
 
     return NextResponse.json({ id: user.id, isAdmin: user.isAdmin });
