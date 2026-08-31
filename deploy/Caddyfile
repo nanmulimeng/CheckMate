@@ -1,5 +1,10 @@
-:8080 {
-  reverse_proxy 127.0.0.1:3000
-  # 域名备案后切换为：
-  # exam.yourdomain.com { reverse_proxy 127.0.0.1:3000 }
-}
+# v1 暂不启用：2026-08-31 实机勘察发现服务器 8080 已被既有 nginx 占用、
+# 80/443 由 Caddy 服务 skills.nanmu.xyz（勿动其 /etc/caddy/Caddyfile），
+# 且域名未备案——应用以 PM2 直连 0.0.0.0:3210 对外（见 ecosystem.config.cjs）。
+#
+# 域名备案后启用：在服务器 /etc/caddy/Caddyfile 「追加」下方站点块（不要覆盖既有内容），
+# 并把 ecosystem 的 HOSTNAME 收紧回 127.0.0.1、PORT 回 3000：
+#
+# checkmate.nanmu.xyz {
+#   reverse_proxy 127.0.0.1:3000
+# }

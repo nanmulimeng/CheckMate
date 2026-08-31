@@ -2,15 +2,16 @@
 # ============================================================================
 # deploy.sh — 从开发机执行的部署脚本（bash deploy/deploy.sh）
 #
-# 用法：
-#   SSH_HOST=root@你的服务器IP bash deploy/deploy.sh        # 默认 22 端口
-#   SSH_HOST=root@1.2.3.4 SSH_PORT=2222 bash deploy/deploy.sh
+# 用法（开发机 ~/.ssh/config 里配好 Host checkmate 后）：
+#   SSH_HOST=checkmate bash deploy/deploy.sh
+#   或显式：SSH_HOST=nanmu@你的服务器IP bash deploy/deploy.sh        # 默认 22 端口
 #
-# 前置：服务器已跑过 deploy/setup.sh（Node20/pnpm/pm2/Caddy/工具链/数据目录/crontab）。
+# 前置：服务器已跑过 deploy/setup.sh（pm2/pnpm/数据目录/crontab；
+# 服务器为非空白机，Node 22 与 Caddy 均已存在，详见 setup.sh 头注）。
 #
 # 流程：
 #   开发机：pnpm build → 组装发布包（standalone 产物 + 静态资源 + prisma）→ scp 上传
-#   服务器：解压到 /opt/seti/releases/<时间戳>/ → 装依赖（含原生模块编译）→
+#   服务器：解压到 /opt/checkmate/releases/<时间戳>/ → 装依赖（跳过构建脚本）→
 #           数据库迁移（每次都跑，prisma migrate deploy 本身幂等）→
 #           首次部署才 seed → 剪掉 devDependencies → 切 current 软链 → pm2 拉起 →
 #           替换 /etc/crontab 的 __SECRET__ 占位（只在占位还在时执行，天然幂等）
@@ -19,11 +20,10 @@
 #   * 依赖安装用「全量 install + 结尾 pnpm prune --prod」而不是 --prod：
 #     prisma CLI / tsx / dotenv 都在 devDependencies，migrate deploy 与 seed 需要它们；
 #     先全量装、跑完迁移再剪枝，运行时最终仍是纯生产依赖。
-#   * 不加 --ignore-scripts：better-sqlite3 必须在服务器上现场编译原生绑定
-#    （开发机是 Windows，产物里的 .node 文件在 Linux 上不可用）。
-#     pnpm 10 默认拦截依赖的构建脚本，这里用
-#     `pnpm config set only-built-dependencies better-sqlite3 --location project`
-#     写入项目 .npmrc 显式放行（选择：项目级配置，不污染全局）。
+#   * 依赖安装加 --ignore-scripts：better-sqlite3 v13 的原生二进制随包分发
+#    （prebuilds/linux-x64.node，node-gyp-build 运行时加载），构建脚本无需执行；
+#    2026-08-31 实测：开发机（Windows 无 VS）与服务器（无 g++）上编译都会失败，
+#    且失败会让 pnpm 以非零码退出、中断部署——跳过构建是唯一正确姿势。
 #   * .next/static 直接打进发布包（每次部署都带上），而不是只在首次部署时 cp：
 #     每次构建的静态资源 hash 都会变，只拷一次会导致后续版本 JS/CSS 404。
 # ============================================================================
@@ -31,7 +31,7 @@ set -euo pipefail
 
 SSH_HOST="${SSH_HOST:?请设置 SSH_HOST，如 root@你的服务器IP}"
 SSH_PORT="${SSH_PORT:-22}"
-REMOTE_ROOT="/opt/seti"
+REMOTE_ROOT="/opt/checkmate"
 TS="$(date +%Y%m%d-%H%M%S)"
 RELEASE_DIR="$REMOTE_ROOT/releases/$TS"
 STAGE=".release-stage"
@@ -63,7 +63,7 @@ tar -C "$STAGE" -czf ".release-$TS.tar.gz" .
 echo "    发布包：.release-$TS.tar.gz（$(du -h ".release-$TS.tar.gz" | cut -f1)）"
 
 echo "==> [3/5] 上传到 $RELEASE_DIR"
-ssh_cmd "mkdir -p '$RELEASE_DIR' /var/lib/seti/photos /var/lib/seti/backups"
+ssh_cmd "mkdir -p '$RELEASE_DIR' /var/lib/checkmate/photos /var/lib/checkmate/backups"
 scp -P "$SSH_PORT" ".release-$TS.tar.gz" "$SSH_HOST:$RELEASE_DIR/release.tar.gz"
 
 echo "==> [4/5] 服务器端：解压 / 装依赖 / 迁移数据库 / 切换版本 / 拉起进程"
@@ -74,20 +74,16 @@ cd "$RELEASE_DIR"
 tar xzf release.tar.gz && rm release.tar.gz
 
 # standalone 自带的 node_modules 是开发机（Windows）上 trace 出来的，
-# 原生二进制在 Linux 不可用 → 删掉重装，保证全部由本机产出
+# 原生二进制在 Linux 不可用 → 删掉重装（--ignore-scripts：better-sqlite3 v13 的
+# linux-x64 二进制随包分发于 prebuilds/，无需构建；服务器无 g++，编译必挂）
 rm -rf node_modules
-
-# pnpm 10 默认拦截依赖构建脚本；better-sqlite3 需要放行（写入项目 .npmrc）
-pnpm config set only-built-dependencies better-sqlite3 --location project
-pnpm install
-# 双保险：即使上面的放行配置在新版 pnpm 失效，rebuild 也强制编译一次原生绑定
-pnpm rebuild better-sqlite3
+pnpm install --ignore-scripts
 
 # 生成 Prisma Client（输出到 src/generated/prisma，随 .gitignore 不进发布包，
 # 必须在服务器上现场生成）：seed.ts 直接 import 它，缺了首个部署就会 module-not-found。
 pnpm exec prisma generate
 
-export DATABASE_URL='file:/var/lib/seti/prisma.db'
+export DATABASE_URL='file:/var/lib/checkmate/prisma.db'
 pnpm exec prisma migrate deploy
 
 FIRST_DEPLOY=0
@@ -128,23 +124,23 @@ esac
 
 # ecosystem.config.cjs 按部署基线原样提交；此处现场替换：
 #   __SESSION_SECRET__ → .env.production 里的密钥
-#   cwd /opt/seti → /opt/seti/current（配合 releases/ 软链发布与回滚）
+#   cwd /opt/checkmate → /opt/checkmate/current（配合 releases/ 软链发布与回滚）
 sed -i -e "s|__SESSION_SECRET__|$SESSION_SECRET|" \
-       -e 's|cwd: "/opt/seti"|cwd: "/opt/seti/current"|' ecosystem.config.cjs
+       -e 's|cwd: "/opt/checkmate"|cwd: "/opt/checkmate/current"|' ecosystem.config.cjs
 chmod 600 ecosystem.config.cjs
 
 # /etc/crontab 的 __SECRET__ 占位只在首次部署替换（占位已消失时 sed 无事可做）。
 # 服务器没装 sqlite3 CLI，改用 node + 发布包里的 better-sqlite3 读 Setting 表。
 if [ -f /etc/crontab ] && grep -q '__SECRET__' /etc/crontab; then
   CRON_SECRET="$(cd "$RELEASE_DIR" && node -e '
-    const db = require("better-sqlite3")("/var/lib/seti/prisma.db");
+    const db = require("better-sqlite3")("/var/lib/checkmate/prisma.db");
     const row = db.prepare("SELECT value FROM Setting WHERE key = ?").get("cron_secret");
     console.log(row ? row.value : "");')"
   case "$CRON_SECRET" in
     "") echo "    错误：生产库没有 cron_secret（seed 是否执行过？）" >&2; exit 1 ;;
     *[!A-Za-z0-9]*) echo "    错误：cron_secret 含意外字符，拒绝写入 sed" >&2; exit 1 ;;
   esac
-  sed -i "s|__SECRET__|$CRON_SECRET|g" /etc/crontab
+  sudo sed -i "s|__SECRET__|$CRON_SECRET|g" /etc/crontab
   echo "    /etc/crontab secret 占位已替换"
 fi
 
@@ -154,4 +150,4 @@ echo "    部署完成：$RELEASE_DIR"
 REMOTE
 
 # 本地临时目录/发布包由开头的 trap EXIT 兜底清理（成功与失败路径都覆盖）
-echo "全部完成。访问 http://服务器IP:8080 验收（记得阿里云安全组放行 8080/tcp）。"
+echo "全部完成。访问 http://服务器IP:3210 验收（记得阿里云安全组放行 3210/tcp）。"

@@ -2,10 +2,9 @@
 # ============================================================================
 # rollback.sh — 回滚到上一个发布版（从开发机执行）
 #
-# 用法：
-#   SSH_HOST=root@你的服务器IP bash deploy/rollback.sh          # 回滚到上一版
-#   SSH_HOST=root@1.2.3.4 SSH_PORT=2222 bash deploy/rollback.sh
-#   SSH_HOST=root@1.2.3.4 bash deploy/rollback.sh 20260831-120000  # 指定版本目录名
+# 用法（开发机 ~/.ssh/config 里配好 Host checkmate 后）：
+#   SSH_HOST=checkmate bash deploy/rollback.sh                    # 回滚到上一版
+#   SSH_HOST=checkmate bash deploy/rollback.sh 20260831-120000   # 指定版本目录名
 #
 # 行为：
 #   1. 找到 current 当前指向的版本，切到它之前的那一版（或参数指定的版本）
@@ -15,10 +14,10 @@
 # ============================================================================
 set -euo pipefail
 
-SSH_HOST="${SSH_HOST:?请设置 SSH_HOST，如 root@你的服务器IP}"
+SSH_HOST="${SSH_HOST:?请设置 SSH_HOST，如 checkmate 或 nanmu@服务器IP}"
 SSH_PORT="${SSH_PORT:-22}"
-TARGET="${1:-}" # 可选：要回滚到的版本目录名（/opt/seti/releases/ 下）
-REMOTE_ROOT="/opt/seti"
+TARGET="${1:-}" # 可选：要回滚到的版本目录名（/opt/checkmate/releases/ 下）
+REMOTE_ROOT="/opt/checkmate"
 
 ssh -p "$SSH_PORT" "$SSH_HOST" bash -s -- "$REMOTE_ROOT" "$TARGET" <<'REMOTE'
 set -euo pipefail
@@ -60,4 +59,4 @@ done
 echo "当前保留：$(echo "$KEEP" | tr '\n' ' ')"
 REMOTE
 
-echo "回滚完成：http://服务器IP:8080 已运行上一版。"
+echo "回滚完成：http://服务器IP:3210 已运行上一版。"

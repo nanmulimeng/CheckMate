@@ -1,8 +1,10 @@
-# crontab 样例（部署到服务器：crontab -e 后按需修改）
-# REPLACE 换成 Setting.cron_secret 的值（dev.db / 生产库里 seed 生成的那份）。
-# 服务器本地回环访问即可，无需暴露公网。
+# crontab 样例（实际由 deploy/setup.sh 写入 /etc/crontab，secret 占位由 deploy.sh 替换；
+# 本文件仅作参考/手工恢复用）。
+# REPLACE 换成 Setting.cron_secret 的值（生产库里 seed 生成的那份）。
+# 应用监听 0.0.0.0:3210，cron 走本机回环访问即可。
 # remind 每小时整点打点：到不到提醒小时由应用里的 Setting.remind_hour 决定
 #（管理员在 /admin 改，即时生效，无需改 crontab）。
-0 * * * * curl -s "http://localhost:3000/api/cron/remind?secret=REPLACE" >/dev/null
-10 0 * * 1 curl -s "http://localhost:3000/api/cron/weekly?secret=REPLACE" >/dev/null
-30 3 * * * curl -s "http://localhost:3000/api/cron/cleanup?secret=REPLACE" >/dev/null
+0 * * * * root curl -s "http://127.0.0.1:3210/api/cron/remind?secret=REPLACE" >/dev/null
+10 0 * * 1 root curl -s "http://127.0.0.1:3210/api/cron/weekly?secret=REPLACE" >/dev/null
+30 3 * * * root curl -s "http://127.0.0.1:3210/api/cron/cleanup?secret=REPLACE" >/dev/null
+0 4 * * * root tar czf /var/lib/checkmate/backups/checkmate-$(date +\%F).tar.gz /var/lib/checkmate/photos /var/lib/checkmate/prisma.db 2>/dev/null && ls -t /var/lib/checkmate/backups/*.tar.gz | tail -n +8 | xargs -r rm --
