@@ -12,6 +12,8 @@ function args(overrides: Partial<BuildFeedArgs> = {}): BuildFeedArgs {
     streakDatesByUser: {},
     nudgedUserIds: [],
     examDate: "",
+    // 北京 2026-08-31 20:00（UTC 12:00）：TODAY 未过截止，editable 判定稳定
+    now: new Date("2026-08-31T12:00:00Z"),
     ...overrides,
   };
 }
@@ -149,5 +151,27 @@ describe("buildFeed", () => {
     expect(buildFeed(args({ examDate: "2026/12/19" })).daysToExam).toBeNull();
     expect(buildFeed(args({ examDate: "2026-12-19" })).daysToExam).toBe(110);
     expect(buildFeed(args({ examDate: "2026-08-31" })).daysToExam).toBe(0);
+  });
+
+  it("editable：本人且未过截止才可编辑，他人打卡不可", () => {
+    const row = {
+      id: 10,
+      userId: 1,
+      subjectName: "政治",
+      durationMinutes: 45,
+      note: "",
+      hasPhoto: false,
+      photoIds: [],
+      comments: [],
+      likeUserIds: [],
+    } satisfies BuildFeedArgs["checkIns"][number];
+    // viewerId=1（本人），北京 8-31 20:00 未过当天截止 → 可编辑
+    expect(buildFeed(args({ users: [{ id: 1, displayName: "甲" }], checkIns: [row] })).members[0].checkins[0].editable).toBe(true);
+    // 换 viewer=4（他人）→ 不可编辑
+    expect(buildFeed(args({ viewerId: 4, users: [{ id: 1, displayName: "甲" }], checkIns: [row] })).members[0].checkins[0].editable).toBe(false);
+    // 时钟拨到北京 9-01 02:00（UTC 8-31 18:00，8-31 的截止 01:00 已过）→ 本人也不可编辑
+    expect(
+      buildFeed(args({ users: [{ id: 1, displayName: "甲" }], checkIns: [row], now: new Date("2026-08-31T18:00:00Z") })).members[0].checkins[0].editable,
+    ).toBe(false);
   });
 });

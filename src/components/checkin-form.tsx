@@ -32,20 +32,33 @@ export interface CheckInDefaults {
   allowYesterday: boolean;
 }
 
+/** 编辑模式的预填值（/checkin/new?id=N，归属/截止已由服务端壳裁决） */
+export interface EditTarget {
+  id: number;
+  subjectId: number;
+  durationMinutes: number;
+  note: string;
+}
+
 const QUICK_DURATIONS = [30, 60, 90, 120];
 const NOTE_LIMIT = 500;
 
 export default function CheckInForm({
   subjects,
   defaults,
+  edit = null,
 }: {
   subjects: { id: number; name: string }[];
   defaults: CheckInDefaults;
+  edit?: EditTarget | null;
 }) {
   const router = useRouter();
-  const [subjectId, setSubjectId] = useState<string>(subjects[0] ? String(subjects[0].id) : "");
-  const [duration, setDuration] = useState("60");
-  const [note, setNote] = useState("");
+  const [subjectId, setSubjectId] = useState<string>(
+    edit ? String(edit.subjectId) : subjects[0] ? String(subjects[0].id) : "",
+  );
+  const [duration, setDuration] = useState(edit ? String(edit.durationMinutes) : "60");
+  const [note, setNote] = useState(edit?.note ?? "");
+  // 编辑模式不改日期（PATCH 不接受 date 字段），这个 state 仅供创建路径用
   const [date, setDate] = useState(defaults.defaultDate);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -76,18 +89,32 @@ export default function CheckInForm({
     }
     setSubmitting(true);
     try {
-      const photoIds = (await pickerRef.current?.getPhotoIds()) ?? [];
-      const res = await fetch("/api/checkins", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subjectId: Number(subjectId),
-          date,
-          durationMinutes: minutes,
-          note,
-          photoIds,
-        }),
-      });
+      let res: Response;
+      if (edit) {
+        // 编辑：PATCH 只改科目/时长/备注，照片维持原样（日期不可改）
+        res = await fetch(`/api/checkins/${edit.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subjectId: Number(subjectId),
+            durationMinutes: minutes,
+            note,
+          }),
+        });
+      } else {
+        const photoIds = (await pickerRef.current?.getPhotoIds()) ?? [];
+        res = await fetch("/api/checkins", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subjectId: Number(subjectId),
+            date,
+            durationMinutes: minutes,
+            note,
+            photoIds,
+          }),
+        });
+      }
       if (res.ok) {
         router.push("/");
         router.refresh();
@@ -105,10 +132,11 @@ export default function CheckInForm({
     <main className="flex min-h-svh flex-1 items-center justify-center bg-muted/40 px-4 py-10">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-xl">记一笔打卡</CardTitle>
+          <CardTitle className="text-xl">{edit ? "编辑打卡" : "记一笔打卡"}</CardTitle>
           <CardDescription>
-            记入日期：{dateLabel(date)}
-            {dateOptions.length > 1 ? "（凌晨时段可在昨天/今天间切换）" : ""}
+            {edit
+              ? "修改科目/时长/备注；照片与日期保持原样。"
+              : `记入日期：${dateLabel(date)}${dateOptions.length > 1 ? "（凌晨时段可在昨天/今天间切换）" : ""}`}
           </CardDescription>
         </CardHeader>
         <form onSubmit={onSubmit}>
@@ -190,12 +218,14 @@ export default function CheckInForm({
               </span>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <Label>照片（选填）</Label>
-              <PhotoPicker handleRef={pickerRef} onError={setError} />
-            </div>
+            {!edit && (
+              <div className="flex flex-col gap-2">
+                <Label>照片（选填）</Label>
+                <PhotoPicker handleRef={pickerRef} onError={setError} />
+              </div>
+            )}
 
-            {dateOptions.length > 1 && (
+            {!edit && dateOptions.length > 1 && (
               <div className="flex flex-col gap-2">
                 <Label>记入日期</Label>
                 <div className="grid grid-cols-2 gap-2">
@@ -221,7 +251,7 @@ export default function CheckInForm({
               className="w-full"
               disabled={submitting || subjects.length === 0}
             >
-              {submitting ? "提交中…" : "打卡"}
+              {submitting ? "提交中…" : edit ? "保存修改" : "打卡"}
             </Button>
           </CardFooter>
         </form>

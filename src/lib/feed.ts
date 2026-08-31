@@ -1,4 +1,5 @@
 import { getPrisma } from "./db";
+import { canCheckInFor } from "./dates";
 import { getSetting } from "./settings";
 import { computeStreak } from "./streak";
 
@@ -20,6 +21,8 @@ export interface FeedCheckIn {
   comments: FeedComment[];
   likeCount: number;
   likedByMe: boolean;
+  /** 本人且未过截止（canCheckInFor）：动态流卡片据此显示编辑/删除入口 */
+  editable: boolean;
 }
 
 export interface FeedMember {
@@ -73,6 +76,8 @@ export interface BuildFeedArgs {
   /** 我今天已催过的用户 id */
   nudgedUserIds: number[];
   examDate: string;
+  /** 「可编辑」裁决用的当前时刻；缺省取真实时钟（测试传固定值保持确定性） */
+  now?: Date;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -83,6 +88,7 @@ export function daysBetween(from: string, target: string): number {
 }
 
 export function buildFeed(args: BuildFeedArgs): FeedData {
+  const now = args.now ?? new Date();
   const checkInsByUser = new Map<number, FeedCheckInRow[]>();
   for (const c of args.checkIns) {
     const list = checkInsByUser.get(c.userId);
@@ -110,6 +116,10 @@ export function buildFeed(args: BuildFeedArgs): FeedData {
         comments: r.comments,
         likeCount: r.likeUserIds.length,
         likedByMe: r.likeUserIds.includes(args.viewerId),
+        // 编辑/删除入口的显隐在服务端裁决（时区/截止逻辑不出 dates.ts），
+        // 客户端只认这个布尔，不自己推算。动态流按 args.date 查询，
+        // 这里 r.date 恒等于它，直接用查询日做截止裁决。
+        editable: r.userId === args.viewerId && canCheckInFor(args.date, now),
       })),
       nudgeAlreadySentToday: nudged.has(u.id),
     };

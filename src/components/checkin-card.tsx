@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Heart, Send, X } from "lucide-react";
+import { Heart, Pencil, Send, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader } from "@/components/ui/card";
@@ -21,6 +22,8 @@ export interface CheckInCardData {
   comments: { id: number; authorName: string; content: string }[];
   likeCount: number;
   likedByMe: boolean;
+  /** 本人且未过截止（服务端裁决）：显示编辑/删除入口 */
+  editable: boolean;
 }
 
 const COMMENT_LIMIT = 200;
@@ -33,6 +36,7 @@ export default function CheckinCard({ data }: { data: CheckInCardData }) {
   const [commentText, setCommentText] = useState("");
   const [commentPending, setCommentPending] = useState(false);
   const [zoomedPhotoId, setZoomedPhotoId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // 评论提交后 router.refresh() 会送来新 props，但客户端组件不卸载、state 不重置。
   // 用「渲染期对齐」把点赞态拉回服务端真值（React 官方推荐的模式，无需 useEffect）。
@@ -59,6 +63,26 @@ export default function CheckinCard({ data }: { data: CheckInCardData }) {
       setError("点赞失败，请重试");
     } finally {
       setLikePending(false);
+    }
+  }
+
+  async function deleteCheckIn() {
+    if (deleting) return;
+    // 原生 confirm：删除是低频的破坏性操作，够用且零依赖
+    if (!window.confirm("删除这条打卡？（照片与评论会一并删除）")) return;
+    setError("");
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/checkins/${data.id}`, { method: "DELETE" });
+      if (res.ok) {
+        router.refresh(); // 动态流由服务端渲染，刷新即消失
+        return;
+      }
+      setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "删除失败，请重试");
+    } catch {
+      setError("网络错误，请重试");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -100,11 +124,32 @@ export default function CheckinCard({ data }: { data: CheckInCardData }) {
           </p>
         </div>
         <CardAction>
-          {!data.hasPhoto && (
-            <Badge className="border-yellow-300 bg-yellow-100 text-yellow-800 dark:border-yellow-500/40 dark:bg-yellow-500/15 dark:text-yellow-300">
-              无凭证
-            </Badge>
-          )}
+          <div className="flex items-center gap-1.5">
+            {!data.hasPhoto && (
+              <Badge className="border-yellow-300 bg-yellow-100 text-yellow-800 dark:border-yellow-500/40 dark:bg-yellow-500/15 dark:text-yellow-300">
+                无凭证
+              </Badge>
+            )}
+            {data.editable && (
+              <>
+                <Button asChild size="icon" variant="ghost" className="size-8">
+                  <Link href={`/checkin/new?id=${data.id}`} aria-label="编辑这条打卡">
+                    <Pencil className="size-4" aria-hidden />
+                  </Link>
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-8 text-muted-foreground hover:text-destructive"
+                  onClick={deleteCheckIn}
+                  disabled={deleting}
+                  aria-label="删除这条打卡"
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                </Button>
+              </>
+            )}
+          </div>
         </CardAction>
       </CardHeader>
 
