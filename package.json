@@ -9,11 +9,14 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
     "iron-session": "^8.0.4",
     "next": "16.3.3",
     "react": "19.2.8",
@@ -29,6 +32,7 @@
     "eslint-config-next": "16.3.3",
     "prisma": "7.10.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5",
     "vitest": "^4.1.11"
   },
