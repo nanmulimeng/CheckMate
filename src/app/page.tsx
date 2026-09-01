@@ -8,15 +8,18 @@ import SiteNav from "@/components/site-nav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
-import { beijingDateStr } from "@/lib/dates";
+import { beijingDateStr, defaultCheckInDate } from "@/lib/dates";
 import { getFeed } from "@/lib/feed";
+import { getDeadlineHour } from "@/lib/settings";
 
 // 登录守卫：读取 session 必须走动态渲染
 export const dynamic = "force-dynamic";
 
-// 今日动态流（核心页）：只看「今天」（北京时间）。
-// 全部日期/streak/倒计时计算都在服务端 lib 完成，组件只消费字符串与数字。
-export default async function Home() {
+// 今日动态流（核心页）：跟随打卡归属日（defaultCheckInDate）——
+// 凌晨补卡窗口内显示昨天的流，补完昨天的卡跳回来立刻能看到，
+// 而不是被「今天还没有人打卡」糊一脸。全部日期/streak/倒计时
+// 计算都在服务端 lib 完成，组件只消费字符串与数字。
+export default async function Home(props: PageProps<"/">) {
   const session = await getSession();
   if (!session.userId) redirect("/login");
 
@@ -26,7 +29,13 @@ export default async function Home() {
   });
   if (!me) redirect("/login");
 
-  const feed = await getFeed(beijingDateStr(new Date()), me.id);
+  const now = new Date();
+  const [deadlineHour, sp] = await Promise.all([getDeadlineHour(), props.searchParams]);
+  const feed = await getFeed(defaultCheckInDate(now, deadlineHour), me.id);
+
+  // ?done=YYYY-MM-DD：打卡成功的确认横幅（checkin-form 提交后跳转带上）
+  const doneParam = typeof sp.done === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.done) ? sp.done : null;
+  const makeup = feed.date !== beijingDateStr(now);
   const done = feed.members.filter((m) => m.hasCheckedIn);
   const pending = feed.members.filter((m) => !m.hasCheckedIn);
   const totalCheckins = feed.members.reduce((n, m) => n + m.checkins.length, 0);
@@ -37,12 +46,24 @@ export default async function Home() {
       <header className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold">今日动态</h1>
-          <p className="text-xs text-muted-foreground">{feed.date}（北京时间）</p>
+          <p className="text-xs text-muted-foreground">
+            {feed.date}（北京时间）{makeup && " · 补卡时段"}
+          </p>
         </div>
         <LogoutButton />
       </header>
 
       <CountdownBar examDate={feed.examDate} daysToExam={feed.daysToExam} />
+
+      {doneParam && (
+        <p
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300"
+        >
+          已记入 {doneParam} ✓
+        </p>
+      )}
+
       <MemberStatus members={feed.members} />
 
       <section aria-label="今日打卡动态" className="flex flex-col gap-3">

@@ -192,7 +192,7 @@ export default function CheckinCard({ data }: { data: CheckInCardData }) {
               className={cn("size-4", like.liked ? "fill-red-500 text-red-500" : "text-muted-foreground")}
               aria-hidden
             />
-            {like.count > 0 ? like.count : "赞"}
+            {like.count > 0 ? `赞 ${like.count}` : "赞"}
           </Button>
         </div>
 

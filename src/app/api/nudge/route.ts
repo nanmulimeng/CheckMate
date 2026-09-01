@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireUser } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
-import { beijingDateStr } from "@/lib/dates";
+import { defaultCheckInDate } from "@/lib/dates";
+import { getDeadlineHour } from "@/lib/settings";
 import { sendServerChan } from "@/lib/serverchan";
 import { Prisma } from "@/generated/prisma/client";
 
 // POST /api/nudge — 催一下 { toUserId } → { ok: true, notified }
 // 幂等：Nudge @@unique([from,to,date]) 保证每人每天只能催同一人一次，
-// 与动态流「已催过」态共用同一 date 约定（beijingDateStr）。
+// 与动态流「已催过」态共用同一 date 约定（defaultCheckInDate 归属日：
+// 凌晨补卡窗口内仍算前一天的卡，催的也是前一天）。
 // 对方未配置 SendKey 时仍创建 Nudge 记录，只是不推送（notified: false）；
 // 推送失败也不影响本响应 —— sendServerChan 永不抛出。
 export async function POST(req: NextRequest) {
@@ -30,7 +32,11 @@ export async function POST(req: NextRequest) {
 
     try {
       await db.nudge.create({
-        data: { fromUserId: userId, toUserId: toUserId as number, date: beijingDateStr(new Date()) },
+        data: {
+          fromUserId: userId,
+          toUserId: toUserId as number,
+          date: defaultCheckInDate(new Date(), await getDeadlineHour()),
+        },
       });
     } catch (e) {
       // 只认唯一约束冲突（今天已催过），其余异常交给外层兜底

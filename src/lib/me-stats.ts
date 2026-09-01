@@ -12,6 +12,8 @@ export interface HeatRecord {
   date: string;
   count: number;
   hasAnyPhoto: boolean;
+  /** 窗口内但晚于今天的格子（本周未来天）：组件渲染成透明占位，不当「无打卡」误导 */
+  future: boolean;
 }
 
 /** 科目横条：总分钟（原始值）+ 展示用小时字符串 + 相对最大科目的宽度百分比 */
@@ -30,7 +32,7 @@ export interface MeStats {
   totalDays: number;
   /** 累计时长（分钟，全部历史） */
   totalMinutes: number;
-  /** 近 26 周窗口，周一起始按周分列，长度恒为 26*7（含空天与本周未来天） */
+  /** 近 26 周窗口，周一起始按周分列，长度恒为 26*7（含空天；本周未来天标 future） */
   heatRecords: HeatRecord[];
   /** 按总分钟降序的科目横条；全部为 0 时为空数组 */
   subjects: SubjectBar[];
@@ -38,7 +40,7 @@ export interface MeStats {
 
 /** 四级色阶下标：0 无 / 1 无凭证 / 2 有凭证 1 条 / 3 有凭证多条 */
 export function heatLevel(count: number, hasAnyPhoto: boolean): number {
-  if (count <= 0) return 0; // 空（含今天/未来的空格）不填色
+  if (count <= 0) return 0; // 空格不填色（未来格在组件层直接透明，不走到这）
   if (!hasAnyPhoto) return 1;
   return count === 1 ? 2 : 3;
 }
@@ -55,15 +57,19 @@ export function buildHeatRecords(
   today: string,
 ): HeatRecord[] {
   const { start, end } = heatmapWindow(today);
-  const byDate = new Map<string, HeatRecord>();
+  const byDate = new Map<string, { count: number; hasAnyPhoto: boolean }>();
   for (const r of rows) {
     if (r.date < start || r.date > end) continue;
-    const cur = byDate.get(r.date) ?? { date: r.date, count: 0, hasAnyPhoto: false };
+    const cur = byDate.get(r.date) ?? { count: 0, hasAnyPhoto: false };
     cur.count += 1;
     if (r.hasPhoto) cur.hasAnyPhoto = true;
     byDate.set(r.date, cur);
   }
-  return dateRange(start, end).map((date) => byDate.get(date) ?? { date, count: 0, hasAnyPhoto: false });
+  // 打卡行不可能晚于今天（canCheckInFor 防穿越），future 只由日历窗口产生
+  return dateRange(start, end).map((date) => {
+    const r = byDate.get(date);
+    return { date, count: r?.count ?? 0, hasAnyPhoto: r?.hasAnyPhoto ?? false, future: date > today };
+  });
 }
 
 /** 按科目总分钟 → 横条列表：0 分钟与名字缺失的不出现；宽度相对最大科目 */

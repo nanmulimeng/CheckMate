@@ -43,10 +43,26 @@ describe("buildHeatRecords", () => {
   it("无记录 → 窗口内每天一条空记录，长度 26*7 且按日期升序", () => {
     const recs = buildHeatRecords([], TODAY);
     expect(recs).toHaveLength(26 * 7);
-    expect(recs[0]).toEqual({ date: WIN_START, count: 0, hasAnyPhoto: false });
-    expect(recs.at(-1)).toEqual({ date: WIN_END, count: 0, hasAnyPhoto: false });
+    expect(recs[0]).toEqual({ date: WIN_START, count: 0, hasAnyPhoto: false, future: false });
+    expect(recs.at(-1)).toEqual({ date: WIN_END, count: 0, hasAnyPhoto: false, future: true });
     const dates = recs.map((r) => r.date);
     expect(dates).toEqual([...dates].sort()); // 升序
+  });
+
+  it("future 标记恰好从今天之后开始（今天含今天以前都是 false）", () => {
+    const recs = buildHeatRecords([], TODAY);
+    expect(recs.filter((r) => r.future).map((r) => r.date)).toEqual([
+      "2026-09-01",
+      "2026-09-02",
+      "2026-09-03",
+      "2026-09-04",
+      "2026-09-05",
+      "2026-09-06",
+    ]);
+    expect(recs.find((r) => r.date === TODAY)?.future).toBe(false);
+    // 周日当天访问：窗口最后一天是今天，没有任何 future 格
+    const sunday = buildHeatRecords([], "2026-09-06");
+    expect(sunday.every((r) => !r.future)).toBe(true);
   });
 
   it("同日多条聚合计数，任一条有凭证即 hasAnyPhoto", () => {
@@ -57,7 +73,7 @@ describe("buildHeatRecords", () => {
       ],
       TODAY,
     );
-    expect(recs.find((r) => r.date === TODAY)).toEqual({ date: TODAY, count: 2, hasAnyPhoto: false });
+    expect(recs.find((r) => r.date === TODAY)).toEqual({ date: TODAY, count: 2, hasAnyPhoto: false, future: false });
 
     const mixed = buildHeatRecords(
       [
@@ -70,6 +86,7 @@ describe("buildHeatRecords", () => {
       date: "2026-08-30",
       count: 2,
       hasAnyPhoto: true,
+      future: false,
     });
   });
 

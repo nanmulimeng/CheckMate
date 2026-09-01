@@ -10,6 +10,7 @@ const LEVEL_CLASSES = ["bg-neutral-200", "bg-amber-300", "bg-emerald-400", "bg-e
 const WEEKDAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 
 function cellTitle(r: HeatRecord): string {
+  if (r.future) return ""; // 未来天：透明占位，不解释成「无打卡」
   return r.count > 0
     ? `${r.date} · ${r.count} 条 · ${r.hasAnyPhoto ? "有凭证" : "无凭证"}`
     : `${r.date} · 无打卡`;
@@ -33,15 +34,22 @@ export default function Heatmap({ records }: { records: HeatRecord[] }) {
         <div role="grid" aria-label="近 26 周打卡热力图" className="flex gap-[2px]">
           {weeks.map((week, i) => (
             <div key={i} role="row" className="flex flex-col gap-[2px]">
-              {week.map((r) => (
-                <span
-                  key={r.date}
-                  role="gridcell"
-                  aria-label={cellTitle(r)}
-                  title={cellTitle(r)}
-                  className={cn("size-[11px] shrink-0 rounded-[2px]", LEVEL_CLASSES[heatLevel(r.count, r.hasAnyPhoto)])}
-                />
-              ))}
+              {week.map((r) => {
+                const title = cellTitle(r);
+                return (
+                  <span
+                    key={r.date}
+                    role="gridcell"
+                    aria-label={title || r.date}
+                    title={title || undefined}
+                    className={cn(
+                      "size-[11px] shrink-0 rounded-[2px]",
+                      // 未来天只保留占位（维持列对齐），不上色不加提示
+                      !r.future && LEVEL_CLASSES[heatLevel(r.count, r.hasAnyPhoto)],
+                    )}
+                  />
+                );
+              })}
             </div>
           ))}
         </div>

@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardFooter,
@@ -116,7 +118,9 @@ export default function CheckInForm({
         });
       }
       if (res.ok) {
-        router.push("/");
+        // 创建成功带上记入日期：首页横幅确认「已记入 N月N日」，凌晨补昨天的卡不再像消失了一样
+        const target = edit ? "/" : `/?done=${date}`;
+        router.push(target);
         router.refresh();
         return;
       }
@@ -138,6 +142,13 @@ export default function CheckInForm({
               ? "修改科目/时长/备注；照片与日期保持原样。"
               : `记入日期：${dateLabel(date)}${dateOptions.length > 1 ? "（凌晨时段可在昨天/今天间切换）" : ""}`}
           </CardDescription>
+          <CardAction>
+            <Button asChild size="icon" variant="ghost" className="size-8">
+              <Link href="/" aria-label="返回首页">
+                <ArrowLeft className="size-4" aria-hidden />
+              </Link>
+            </Button>
+          </CardAction>
         </CardHeader>
         <form onSubmit={onSubmit}>
           <CardContent className="flex flex-col gap-4">
