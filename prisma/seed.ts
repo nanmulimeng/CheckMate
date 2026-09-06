@@ -36,7 +36,7 @@ async function main() {
   const defaults: Record<string, string> = {
     invite_code: inviteCode(),
     deadline_hour: "1", // 次日 01:00
-    remind_hour: "21",
+    remind_hour: "22",
     cron_secret: cronSecret(),
     exam_date: "",
   };
