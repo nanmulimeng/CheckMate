@@ -9,6 +9,7 @@ import {
   type ChangeEvent,
   type RefObject,
 } from "react";
+import { Camera, Image as ImageIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -79,6 +80,7 @@ export default function PhotoPicker({
   onError?: (message: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [compressing, setCompressing] = useState(0);
 
@@ -219,6 +221,8 @@ export default function PhotoPicker({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
+        {/* 相册在左、拍照在右——跟随手机相机常规布局（快门右、相册左）；
+            拆成两个 input 让入口直开对应来源，不再交给系统二选一弹层 */}
         <Button
           type="button"
           variant="outline"
@@ -226,7 +230,18 @@ export default function PhotoPicker({
           disabled={photos.length + compressing >= PHOTO_LIMIT || compressing > 0}
           onClick={() => inputRef.current?.click()}
         >
-          添加照片
+          <ImageIcon className="size-4" aria-hidden />
+          相册
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={photos.length + compressing >= PHOTO_LIMIT || compressing > 0}
+          onClick={() => cameraInputRef.current?.click()}
+        >
+          <Camera className="size-4" aria-hidden />
+          拍照
         </Button>
         <Badge variant="secondary">
           {photos.length}/{PHOTO_LIMIT}
@@ -240,6 +255,13 @@ export default function PhotoPicker({
         type="file"
         accept="image/*"
         multiple
+        className="hidden"
+        onChange={pick}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
         capture="environment"
         className="hidden"
         onChange={pick}
