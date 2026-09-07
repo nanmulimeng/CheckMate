@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { addDays, dateRange } from "../dates";
-import { computeWeekly, isFullAttendance, owedDays, weeklyBadges, weekProgress } from "../weekly";
+import { computeWeekly, isFullAttendance, owedDays, weeklyBadges, weekProgress, weekStrip } from "../weekly";
 
 const rows = [
   { userId: 1, displayName: "甲", date: "2026-08-24", durationMinutes: 120, hasPhoto: true },
@@ -225,5 +225,33 @@ describe("weekProgress（首页本周保底进度条；weekStart=2026-09-07 周�
   it("周日已达标：仍显示「已达到本周保底」而非最后一天提醒", () => {
     const p = weekProgress("2026-09-07", "2026-09-13", 6, dateRange("2026-09-07", "2026-09-12"));
     expect(p.text).toBe("已达到本周保底");
+  });
+});
+
+describe("weekStrip（周结算成员行的 7 格周条；weekStart=2026-09-07 周一）", () => {
+  it("打卡/照片/超额区都按天标注；同日多条只要一条带照片就算有凭证", () => {
+    const cells = weekStrip("2026-09-07", 6, [
+      { date: "2026-09-07", hasPhoto: false },
+      { date: "2026-09-07", hasPhoto: true }, // 同日第二条带照片
+      { date: "2026-09-09", hasPhoto: false },
+      { date: "2026-09-13", hasPhoto: false }, // 周日（第 7 格，超额区）
+      { date: "2026-09-06", hasPhoto: false }, // 上周日，窗口外不计
+    ]);
+    expect(cells).toHaveLength(7);
+    expect(cells[0]).toMatchObject({ label: "一", checked: true, hasPhoto: true, beyondGoal: false });
+    expect(cells[1]).toMatchObject({ label: "二", checked: false, beyondGoal: false });
+    expect(cells[2]).toMatchObject({ label: "三", checked: true, hasPhoto: false });
+    expect(cells[6]).toMatchObject({ label: "日", checked: true, hasPhoto: false, beyondGoal: true });
+  });
+
+  it("保底 7 天时没有超额区", () => {
+    const cells = weekStrip("2026-09-07", 7, []);
+    expect(cells.every((c) => !c.beyondGoal)).toBe(true);
+  });
+
+  it("零打卡 → 全 unchecked", () => {
+    const cells = weekStrip("2026-09-07", 6, []);
+    expect(cells.every((c) => !c.checked)).toBe(true);
+    expect(cells.filter((c) => c.beyondGoal)).toHaveLength(1);
   });
 });

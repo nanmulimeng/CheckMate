@@ -163,3 +163,36 @@ export function weekProgress(
         : `本周最后一天 · 截止明天 ${hh}:00 前打卡还算数`;
   return { cells, days, goalDays, remaining, text };
 }
+
+export interface WeekStripCell {
+  date: string;
+  /** 周几单字（一~日） */
+  label: string;
+  checked: boolean;
+  /** 当天任一条打卡带照片（周条上的相机角标） */
+  hasPhoto: boolean;
+  /** 超出保底天数的格子（第 goalDays+1 格起）：虚线空框，表示保底之外的加成区 */
+  beyondGoal: boolean;
+}
+
+/** 周结算成员行的 7 格周条。rows 传本人本周的打卡（混入窗口外的日期会被过滤，
+ *  同日多条合并：checked 去重、hasPhoto 取或）。 */
+export function weekStrip(
+  weekStart: string,
+  goalDays: number,
+  rows: { date: string; hasPhoto: boolean }[],
+): WeekStripCell[] {
+  const weekEnd = addDays(weekStart, 6);
+  const byDate = new Map<string, boolean>(); // date -> hasPhoto（或）
+  for (const r of rows) {
+    if (r.date < weekStart || r.date > weekEnd) continue;
+    byDate.set(r.date, byDate.get(r.date) || r.hasPhoto);
+  }
+  return dateRange(weekStart, weekEnd).map((date, i) => ({
+    date,
+    label: WEEKDAY_LABEL[new Date(Date.parse(date)).getUTCDay()],
+    checked: byDate.has(date),
+    hasPhoto: byDate.get(date) === true,
+    beyondGoal: i >= goalDays,
+  }));
+}
