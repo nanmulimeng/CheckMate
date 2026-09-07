@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Camera, Check, CupSoda, Flame, Sparkles, Star, TrendingUp } from "lucide-react";
+import { Camera, Check, CupSoda, Flame, Sparkles, Star, TrendingUp, Trophy } from "lucide-react";
 import LogoutButton from "@/components/logout-button";
 import SiteNav from "@/components/site-nav";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession } from "@/lib/auth";
 import { addDays, beijingDateStr, lastMonday, mondayOf } from "@/lib/dates";
 import { getPrisma } from "@/lib/db";
+import { MILESTONE_HOURS, milestoneHistory, nextMilestone } from "@/lib/milestones";
 import { cn } from "@/lib/utils";
 import { computeWeekly, owedDays, weeklyBadges, weekStrip, type WeeklyStat } from "@/lib/weekly";
 
@@ -60,7 +61,7 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
       // 要往前翻周。computeWeekly 内部按周窗口过滤，本周数字不受全量影响。
       // date 是北京日期字符串，YYYY-MM-DD 字典序即时间序，直接 lte
       where: { date: { lte: weekEnd } },
-      select: { userId: true, date: true, durationMinutes: true, hasPhoto: true, user: { select: { displayName: true } } },
+      select: { userId: true, date: true, durationMinutes: true, hasPhoto: true, createdAt: true, user: { select: { displayName: true } } },
     }),
   ]);
   // 注册日按北京时区折算成日期串（与 CheckIn.date 同一口径）
@@ -113,6 +114,12 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
   const goalMetCount = users.filter((u) => badges.get(u.id)?.goalMet).length;
   const fullCount = users.filter((u) => badges.get(u.id)?.full).length;
   const allGoalMet = users.length > 0 && goalMetCount === users.length;
+
+  // 全组合力里程碑：回看历史周时显示的是「截至该周」的累计（与行数据同口径），
+  // 解锁日期按打卡先后累加回推。琥珀色 = 全组的远方（个人保底是绿色）。
+  const cumMinutes = allRows.reduce((a, r) => a + r.durationMinutes, 0);
+  const next = nextMilestone(cumMinutes);
+  const unlocked = milestoneHistory(allRows);
 
   const prevWeek = addDays(weekStart, -7);
   const nextWeek = addDays(weekStart, 7);
@@ -178,6 +185,37 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
                   全勤 {fullCount} 人
                 </span>
               </p>
+              <div className="mt-2.5 border-t pt-2.5">
+                <p className="text-xs text-muted-foreground">
+                  全组累计 <span className="font-medium tabular-nums text-foreground">{(cumMinutes / 60).toFixed(1)}</span> 小时
+                  {next.hours != null
+                    ? ` · 距 ${next.hours} 小时档还差 ${next.remainingHours.toFixed(1)} 小时`
+                    : " · 里程碑已全部点亮"}
+                </p>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
+                  <div className="h-full rounded-full bg-amber-500" style={{ width: `${Math.round(next.ratio * 100)}%` }} />
+                </div>
+                <div className="mt-2 flex items-end gap-4">
+                  {MILESTONE_HOURS.map((h) => {
+                    const at = unlocked.get(h);
+                    return (
+                      <span
+                        key={h}
+                        title={at ? `${beijingDateStr(at)} 解锁` : `未解锁`}
+                        className={cn(
+                          "flex flex-col items-center gap-0.5",
+                          at ? "text-amber-500" : "text-muted-foreground/40",
+                        )}
+                      >
+                        <Trophy className={cn("size-4", at && "fill-amber-300")} aria-hidden />
+                        <span className="text-[10px] leading-none tabular-nums">
+                          {h}h{at ? ` · ${beijingDateStr(at).slice(5)}` : ""}
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
             </CardContent>
           </Card>
 

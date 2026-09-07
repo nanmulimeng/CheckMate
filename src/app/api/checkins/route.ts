@@ -4,7 +4,9 @@ import { AuthError, requireUser } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
 import { canCheckInFor, defaultCheckInDate } from "@/lib/dates";
 import { validateCheckInPayload, validatePhotoIds } from "@/lib/checkin-validate";
+import { crossedMilestones } from "@/lib/milestones";
 import { getDeadlineHour } from "@/lib/settings";
+import { sendServerChan } from "@/lib/serverchan";
 
 // POST /api/checkins — 创建打卡
 // body: { subjectId, date?, durationMinutes, note?, photoIds? } → { id }
@@ -67,6 +69,34 @@ export async function POST(req: NextRequest) {
     });
 
     revalidatePath("/");
+
+    // 全组合力里程碑：这一笔让全组累计跨过档位（100/300/600/1000 小时）时，
+    // 给全组推一条庆祝（纯文字）。fire-and-forget：不阻塞打卡响应——
+    // sendServerChan 单条 10s 超时、内部永不抛，常驻 PM2 进程里安全。
+    void (async () => {
+      try {
+        const [agg, users] = await Promise.all([
+          db.checkIn.aggregate({ _sum: { durationMinutes: true } }),
+          db.user.findMany({ select: { serverchanKey: true } }),
+        ]);
+        const after = agg._sum.durationMinutes ?? 0;
+        const before = after - (durationMinutes as number);
+        const crossed = crossedMilestones(before, after);
+        if (crossed.length === 0) return;
+        const hours = crossed[crossed.length - 1];
+        for (const u of users) {
+          if (!u.serverchanKey) continue;
+          await sendServerChan(
+            u.serverchanKey,
+            "全组里程碑",
+            `全组累计学习时长突破 ${hours} 小时！这是大家一起攒出来的里程，继续同行。`,
+          );
+        }
+      } catch (e) {
+        console.error("[api/checkins POST] milestone notify", e);
+      }
+    })();
+
     return NextResponse.json({ id: checkIn.id });
   } catch (e) {
     if (e instanceof AuthError)
