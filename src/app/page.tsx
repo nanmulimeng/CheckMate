@@ -5,12 +5,14 @@ import LogoutButton from "@/components/logout-button";
 import MemberStatus from "@/components/member-status";
 import NudgeButton from "@/components/nudge-button";
 import SiteNav from "@/components/site-nav";
+import WeekProgressCard from "@/components/week-progress-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
-import { beijingDateStr, defaultCheckInDate } from "@/lib/dates";
+import { beijingDateStr, defaultCheckInDate, mondayOf } from "@/lib/dates";
 import { getFeed } from "@/lib/feed";
 import { getDeadlineHour } from "@/lib/settings";
+import { weekProgress } from "@/lib/weekly";
 
 // 登录守卫：读取 session 必须走动态渲染
 export const dynamic = "force-dynamic";
@@ -25,13 +27,32 @@ export default async function Home(props: PageProps<"/">) {
 
   const me = await getPrisma().user.findUnique({
     where: { id: session.userId },
-    select: { id: true, isAdmin: true },
+    select: { id: true, isAdmin: true, weeklyGoalDays: true },
   });
   if (!me) redirect("/login");
 
   const now = new Date();
   const [deadlineHour, sp] = await Promise.all([getDeadlineHour(), props.searchParams]);
   const feed = await getFeed(defaultCheckInDate(now, deadlineHour), me.id);
+
+  // 本周保底进度条：按归属日所在自然周（feed 的 7 天窗口是滚动的，不是自然周），
+  // 单独查我本周的打卡。todayMinutes 顺带从同一份行里聚合。
+  const db = getPrisma();
+  const weekStart = mondayOf(feed.date);
+  const myWeek = await db.checkIn.findMany({
+    where: { userId: me.id, date: { gte: weekStart, lte: feed.date } },
+    select: { date: true, durationMinutes: true },
+  });
+  const progress = weekProgress(
+    weekStart,
+    feed.date,
+    me.weeklyGoalDays,
+    myWeek.map((r) => r.date),
+    deadlineHour,
+  );
+  const todayMinutes = myWeek
+    .filter((r) => r.date === feed.date)
+    .reduce((a, r) => a + r.durationMinutes, 0);
 
   // ?done=YYYY-MM-DD：打卡成功的确认横幅（checkin-form 提交后跳转带上）
   const doneParam = typeof sp.done === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.done) ? sp.done : null;
@@ -52,6 +73,8 @@ export default async function Home(props: PageProps<"/">) {
       </header>
 
       <CountdownBar examDate={feed.examDate} daysToExam={feed.daysToExam} />
+
+      <WeekProgressCard progress={progress} todayMinutes={todayMinutes} />
 
       {doneParam && (
         <p

@@ -108,3 +108,58 @@ export function weeklyBadges(
 
   return { goalMet: thisWeek.goalMet, full, streak, improved };
 }
+
+// ---------- 首页「本周保底」进度条 ----------
+
+export interface WeekCell {
+  date: string;
+  /** 周几单字（周一=「一」…周日=「日」），格子下方的小标签 */
+  label: string;
+  checked: boolean;
+  state: "past" | "today" | "future";
+}
+
+export interface WeekProgress {
+  cells: WeekCell[];
+  /** 本周打卡天数（截至 today，同日多条算一天） */
+  days: number;
+  goalDays: number;
+  /** 距保底还差几天（已达为 0） */
+  remaining: number;
+  /** 激励文案：已达标 / 进行中 / 本周最后一天的截止提醒 */
+  text: string;
+}
+
+const WEEKDAY_LABEL = ["日", "一", "二", "三", "四", "五", "六"];
+
+/** 首页本周保底进度条（纯展示数据，服务端算好）。
+ *  weekStart 是 today 所在自然周的周一；checkedDates 传本人本周的打卡
+ *  日期（混入别周的日期会被窗口过滤；同日多条去重）。
+ *  「今天」按归属日（defaultCheckInDate）算：凌晨补卡窗口内进度条
+ *  还停在昨天那格，与动态流口径一致。 */
+export function weekProgress(
+  weekStart: string,
+  today: string,
+  goalDays: number,
+  checkedDates: string[],
+  deadlineHour = 1,
+): WeekProgress {
+  const weekEnd = addDays(weekStart, 6);
+  const checked = new Set(checkedDates.filter((d) => d >= weekStart && d <= weekEnd));
+  const cells: WeekCell[] = dateRange(weekStart, weekEnd).map((date) => ({
+    date,
+    label: WEEKDAY_LABEL[new Date(Date.parse(date)).getUTCDay()],
+    checked: checked.has(date),
+    state: date < today ? "past" : date === today ? "today" : "future",
+  }));
+  const days = checked.size;
+  const remaining = Math.max(0, goalDays - days);
+  const hh = String(deadlineHour).padStart(2, "0");
+  const text =
+    remaining === 0
+      ? "已达到本周保底"
+      : today < weekEnd
+        ? `再打 ${remaining} 天达到本周保底`
+        : `本周最后一天 · 截止明天 ${hh}:00 前打卡还算数`;
+  return { cells, days, goalDays, remaining, text };
+}

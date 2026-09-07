@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { addDays, dateRange } from "../dates";
-import { computeWeekly, isFullAttendance, owedDays, weeklyBadges } from "../weekly";
+import { computeWeekly, isFullAttendance, owedDays, weeklyBadges, weekProgress } from "../weekly";
 
 const rows = [
   { userId: 1, displayName: "甲", date: "2026-08-24", durationMinutes: 120, hasPhoto: true },
@@ -174,5 +174,56 @@ describe("weeklyBadges（weekStart=2026-08-31 周一；只和自己比：保底�
       ws = addDays(ws, -7);
     }
     expect(weeklyBadges(1, many, "2026-08-31", 6).streak).toBe(52);
+  });
+});
+
+describe("weekProgress（首页本周保底进度条；weekStart=2026-09-07 周一）", () => {
+  it("周四 4/6：格子状态正确，文案「再打 2 天达到本周保底」", () => {
+    const p = weekProgress("2026-09-07", "2026-09-10", 6, [
+      "2026-09-07",
+      "2026-09-08",
+      "2026-09-09",
+      "2026-09-10",
+    ]);
+    expect(p.days).toBe(4);
+    expect(p.remaining).toBe(2);
+    expect(p.text).toBe("再打 2 天达到本周保底");
+    expect(p.cells).toHaveLength(7);
+    expect(p.cells[0]).toMatchObject({ date: "2026-09-07", label: "一", checked: true, state: "past" });
+    expect(p.cells[3]).toMatchObject({ date: "2026-09-10", checked: true, state: "today" });
+    expect(p.cells[4]).toMatchObject({ date: "2026-09-11", checked: false, state: "future" });
+    expect(p.cells[6].label).toBe("日");
+  });
+
+  it("同日多条打卡只算一天；日期集合里混入本周之外的日期不计", () => {
+    const p = weekProgress("2026-09-07", "2026-09-10", 6, [
+      "2026-09-07",
+      "2026-09-07",
+      "2026-09-06", // 上周日
+      "2026-09-14", // 下周一
+    ]);
+    expect(p.days).toBe(1);
+    expect(p.cells[0].checked).toBe(true);
+  });
+
+  it("达到保底：文案「已达到本周保底」", () => {
+    const p = weekProgress("2026-09-07", "2026-09-10", 4, ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10"]);
+    expect(p.remaining).toBe(0);
+    expect(p.text).toBe("已达到本周保底");
+  });
+
+  it("周日未达标：文案带截止时刻（deadlineHour 默认 1 → 明天 01:00）", () => {
+    const p = weekProgress("2026-09-07", "2026-09-13", 6, ["2026-09-07", "2026-09-08"]);
+    expect(p.text).toBe("本周最后一天 · 截止明天 01:00 前打卡还算数");
+  });
+
+  it("周日未达标且 deadlineHour=22：文案随配置变化", () => {
+    const p = weekProgress("2026-09-07", "2026-09-13", 6, [], 22);
+    expect(p.text).toBe("本周最后一天 · 截止明天 22:00 前打卡还算数");
+  });
+
+  it("周日已达标：仍显示「已达到本周保底」而非最后一天提醒", () => {
+    const p = weekProgress("2026-09-07", "2026-09-13", 6, dateRange("2026-09-07", "2026-09-12"));
+    expect(p.text).toBe("已达到本周保底");
   });
 });
