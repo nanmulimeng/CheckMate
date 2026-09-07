@@ -52,7 +52,7 @@ export function isFullAttendance(s: Pick<WeeklyStat, "days" | "missedDays">): bo
   return s.days > 0 && s.missedDays === 0;
 }
 
-/** 周结算徽章：只和自己比——保底达标 ✅ / 全勤 🌟 / 连续达标周数 🔥 / 较上周进步 📈。
+/** 周结算徽章：只和自己比——保底达标 / 全勤 / 连续达标周数 / 较上周进步。
  *  goalDays 是本人的每周保底打卡天数（1-7，User.weeklyGoalDays，各自在设置页改，
  *  课多的设低些、全力备考的设高些——奖惩基准是「自己的承诺」而非别人）。
  *  rows 传注册以来全部打卡（混了别人的也行，内部按 userId 过滤）；

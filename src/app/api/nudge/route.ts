@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
         ? await sendServerChan(
             target.serverchanKey,
             `${me.displayName} 催你学习`,
-            "别摆了，打卡走起👉",
+            "别摆了，打卡走起",
           )
         : false;
     return NextResponse.json({ ok: true, notified });

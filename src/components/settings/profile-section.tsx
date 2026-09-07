@@ -166,7 +166,7 @@ export default function ProfileSection({
         <div className="flex flex-col gap-2">
           <Label htmlFor="weekly-goal">每周保底打卡天数</Label>
           <CardDescription className="text-xs">
-            周结算只和自己比：按自己的节奏定保底，没完成保底才算 🧋 奶茶候选人。
+            周结算只和自己比：按自己的节奏定保底，没完成保底的算奶茶候选人。
             平时课多就设低些，全力备考就设高些。
           </CardDescription>
           <div className="flex items-center gap-2">

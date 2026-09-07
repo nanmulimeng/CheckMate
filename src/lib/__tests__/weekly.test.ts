@@ -84,7 +84,7 @@ describe("isFullAttendance（全勤 = 参与了且零缺卡）", () => {
   });
 });
 
-describe("weeklyBadges（weekStart=2026-08-31 周一；只和自己比：保底达标 ✅ / 全勤 🌟 / 连续达标 🔥 / 进步 📈）", () => {
+describe("weeklyBadges（weekStart=2026-08-31 周一；只和自己比：保底达标 / 全勤 / 连续达标 / 进步）", () => {
   type Row = { userId: number; date: string; durationMinutes: number; hasPhoto: boolean };
   // 打满 ws 那周 7 天
   const fill = (userId: number, ws: string): Row[] =>

@@ -66,22 +66,22 @@ export async function GET(req: NextRequest) {
       ]),
     );
     const totalDays = report.reduce((a, r) => a + r.days, 0);
-    const groupLine = `全组这周合计打卡 ${totalDays} 天，继续一起走 💪`;
+    const groupLine = `全组这周合计打卡 ${totalDays} 天，继续一起走`;
 
     for (const u of users) {
       if (!u.serverchanKey) continue;
       const s = report.find((r) => r.userId === u.id)!;
       const b = badges.get(u.id)!;
-      // 逐人文案示例（只和自己比，正向先行）：
-      //   达标：「本周打卡 6/6 天 ✅ · 共 12.5 小时 · 📈 比上周多 · 全组这周…」
-      //   未达：「本周打卡 4/6 天，差 2 天 🧋 · 共 8 小时 · 全组这周…」
+      // 逐人文案示例（只和自己比，正向先行；纯文字，微信端各机型渲染一致）：
+      //   达标：「本周打卡 6/6 天，达到保底 · 共 12.5 小时 · 比上周多 · 全组这周…」
+      //   未达：「本周打卡 4/6 天，差 2 天（奶茶候选人） · 共 8 小时 · 全组这周…」
       const mine = b.goalMet
-        ? `本周打卡 ${s.days}/${goalDays.get(u.id)} 天 ✅`
-        : `本周打卡 ${s.days}/${goalDays.get(u.id)} 天，差 ${goalDays.get(u.id)! - s.days} 天 🧋`;
+        ? `本周打卡 ${s.days}/${goalDays.get(u.id)} 天，达到保底`
+        : `本周打卡 ${s.days}/${goalDays.get(u.id)} 天，差 ${goalDays.get(u.id)! - s.days} 天（奶茶候选人）`;
       const parts = [mine, `共 ${(s.totalMinutes / 60).toFixed(1)} 小时`];
-      if (b.full) parts.push("🌟 全勤");
-      if (b.streak >= 2) parts.push(`🔥 连续第 ${b.streak} 周达标`);
-      if (b.improved) parts.push("📈 比上周多");
+      if (b.full) parts.push("全勤");
+      if (b.streak >= 2) parts.push(`连续第 ${b.streak} 周达标`);
+      if (b.improved) parts.push("比上周多");
       const summary = `${parts.join(" · ")} · ${groupLine}`;
       // sendServerChan 永不抛出，失败只记日志，不影响结算与响应
       await sendServerChan(u.serverchanKey, "上周学习结算", summary);
