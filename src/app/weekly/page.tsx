@@ -95,7 +95,6 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
 
   // 全组汇总：叙事是「我们这周一起」，不是「谁落后了」
   const totalDays = stats.reduce((a, s) => a + s.days, 0);
-  const totalOwed = stats.reduce((a, s) => a + s.days + s.missedDays, 0); // owed = days + missed
   const totalHours = stats.reduce((a, s) => a + s.totalMinutes, 0) / 60;
   const goalMetCount = users.filter((u) => badges.get(u.id)?.goalMet).length;
   const fullCount = users.filter((u) => badges.get(u.id)?.full).length;
@@ -147,7 +146,7 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
             </CardHeader>
             <CardContent className="flex flex-col gap-1 text-sm">
               <p>
-                打卡 <span className="tabular-nums font-medium">{totalDays}/{totalOwed}</span> 人日 ·
+                合计打卡 <span className="tabular-nums font-medium">{totalDays}</span> 天 ·
                 共学 <span className="tabular-nums font-medium">{totalHours.toFixed(1)}</span> 小时
               </p>
               <p className="text-muted-foreground">
@@ -158,7 +157,7 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium">成员周报（只和自己比）</CardTitle>
+              <CardTitle className="text-sm font-medium">成员周报</CardTitle>
             </CardHeader>
             <CardContent>
               <table className="w-full text-sm">

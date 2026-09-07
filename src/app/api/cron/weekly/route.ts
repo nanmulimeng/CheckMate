@@ -66,8 +66,7 @@ export async function GET(req: NextRequest) {
       ]),
     );
     const totalDays = report.reduce((a, r) => a + r.days, 0);
-    const totalOwed = report.reduce((a, r) => a + r.days + r.missedDays, 0);
-    const groupLine = `全组这周打卡 ${totalDays}/${totalOwed} 人日，继续一起走 💪`;
+    const groupLine = `全组这周合计打卡 ${totalDays} 天，继续一起走 💪`;
 
     for (const u of users) {
       if (!u.serverchanKey) continue;
