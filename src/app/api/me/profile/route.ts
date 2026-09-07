@@ -5,9 +5,10 @@ import { hashPassword, verifyPassword } from "@/lib/password";
 import { sendServerChan } from "@/lib/serverchan";
 
 // 个人资料设置：
-//   PATCH { displayName?, serverchanKey?, password?, oldPassword? }
+//   PATCH { displayName?, serverchanKey?, weeklyGoalDays?, password?, oldPassword? }
 //   POST  { test: true } — 用自己配置的 SendKey 发一条测试推送
 // displayName：1-20 字（trim 后）；serverchanKey：空串 = 清除，非空 = 保存；
+// weeklyGoalDays：每周保底打卡天数 1-7 整数（周结算只和自己比）；
 // password：需带 oldPassword 且通过校验（403），新密码 ≥8 位（400）。
 
 const DISPLAY_NAME_MAX = 20;
@@ -25,7 +26,7 @@ export async function PATCH(req: NextRequest) {
     });
     if (!user) return NextResponse.json({ error: "用户不存在" }, { status: 401 });
 
-    const data: { displayName?: string; serverchanKey?: string | null; passwordHash?: string } = {};
+    const data: { displayName?: string; serverchanKey?: string | null; weeklyGoalDays?: number; passwordHash?: string } = {};
 
     // 三个字段都只在「body 里出现了这个 key」时才处理，未出现保持原值
     if ("displayName" in (body ?? {})) {
@@ -40,6 +41,13 @@ export async function PATCH(req: NextRequest) {
       if (typeof key !== "string" || key.length > SENDKEY_MAX)
         return NextResponse.json({ error: `SendKey 不合法（≤${SENDKEY_MAX} 字符，留空表示清除）` }, { status: 400 });
       data.serverchanKey = key === "" ? null : key; // 空串 = 清除
+    }
+
+    if ("weeklyGoalDays" in (body ?? {})) {
+      const goal = body!["weeklyGoalDays"];
+      if (typeof goal !== "number" || !Number.isInteger(goal) || goal < 1 || goal > 7)
+        return NextResponse.json({ error: "每周保底天数需为 1-7 的整数" }, { status: 400 });
+      data.weeklyGoalDays = goal;
     }
 
     if ("password" in (body ?? {})) {
@@ -59,7 +67,7 @@ export async function PATCH(req: NextRequest) {
     const updated = await db.user.update({
       where: { id: userId },
       data,
-      select: { displayName: true, serverchanKey: true },
+      select: { displayName: true, serverchanKey: true, weeklyGoalDays: true },
     });
 
     // 改密成功即吊销当前 session（iron-session 无服务端会话表，destroy 是
@@ -71,7 +79,7 @@ export async function PATCH(req: NextRequest) {
       await s.destroy();
       relogin = true;
     }
-    return NextResponse.json({ ok: true, relogin, displayName: updated.displayName, hasKey: !!updated.serverchanKey });
+    return NextResponse.json({ ok: true, relogin, displayName: updated.displayName, hasKey: !!updated.serverchanKey, weeklyGoalDays: updated.weeklyGoalDays });
   } catch (e) {
     if (e instanceof AuthError)
       return NextResponse.json({ error: e.message }, { status: e.status });

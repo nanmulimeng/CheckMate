@@ -19,7 +19,7 @@ export default async function SettingsPage() {
   const db = getPrisma();
   const me = await db.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, isAdmin: true, displayName: true, serverchanKey: true },
+    select: { id: true, isAdmin: true, displayName: true, serverchanKey: true, weeklyGoalDays: true },
   });
   if (!me) redirect("/login");
 
@@ -41,7 +41,11 @@ export default async function SettingsPage() {
         <LogoutButton />
       </header>
 
-      <ProfileSection initialDisplayName={me.displayName} initialHasKey={!!me.serverchanKey} />
+      <ProfileSection
+        initialDisplayName={me.displayName}
+        initialHasKey={!!me.serverchanKey}
+        initialWeeklyGoalDays={me.weeklyGoalDays}
+      />
       <SubjectManager
         initialSubjects={subjects.map((s) => ({
           id: s.id,

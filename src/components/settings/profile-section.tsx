@@ -5,6 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -12,22 +19,28 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-// 昵称 + Server酱 SendKey（含「测试推送」）。两个小表单独立提交，
+// 昵称 + 每周保底天数 + Server酱 SendKey（含「测试推送」）。三个小表单独立提交，
 // 保存成功/失败都给行内反馈；测试推送按契约永远 200，sent:false 也要亮出来。
 export default function ProfileSection({
   initialDisplayName,
   initialHasKey,
+  initialWeeklyGoalDays,
 }: {
   initialDisplayName: string;
   initialHasKey: boolean;
+  initialWeeklyGoalDays: number;
 }) {
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [serverchanKey, setServerchanKey] = useState("");
   const [hasKey, setHasKey] = useState(initialHasKey);
+  const [goal, setGoal] = useState(String(initialWeeklyGoalDays));
+  const [savedGoal, setSavedGoal] = useState(initialWeeklyGoalDays);
   const [nameMsg, setNameMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [keyMsg, setKeyMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [goalMsg, setGoalMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [savingName, setSavingName] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
+  const [savingGoal, setSavingGoal] = useState(false);
   const [testing, setTesting] = useState(false);
 
   async function saveName(e: FormEvent) {
@@ -79,6 +92,29 @@ export default function ProfileSection({
     }
   }
 
+  async function saveGoal() {
+    setGoalMsg(null);
+    setSavingGoal(true);
+    try {
+      const res = await fetch("/api/me/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weeklyGoalDays: Number(goal) }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.ok) setSavedGoal(Number(goal));
+      setGoalMsg(
+        res.ok
+          ? { ok: true, text: `已保存：每周保底打卡 ${goal} 天` }
+          : { ok: false, text: data.error ?? "保存失败" },
+      );
+    } catch {
+      setGoalMsg({ ok: false, text: "网络错误，请重试" });
+    } finally {
+      setSavingGoal(false);
+    }
+  }
+
   async function testPush() {
     setKeyMsg(null);
     setTesting(true);
@@ -126,6 +162,41 @@ export default function ProfileSection({
             </p>
           )}
         </form>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="weekly-goal">每周保底打卡天数</Label>
+          <CardDescription className="text-xs">
+            周结算只和自己比：按自己的节奏定保底，没完成保底才算 🧋 奶茶候选人。
+            平时课多就设低些，全力备考就设高些。
+          </CardDescription>
+          <div className="flex items-center gap-2">
+            <Select value={goal} onValueChange={(v) => setGoal(v)}>
+              <SelectTrigger id="weekly-goal" className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                  <SelectItem key={d} value={String(d)}>
+                    {d} 天{d === 6 ? "（推荐）" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={savingGoal || Number(goal) === savedGoal}
+              onClick={saveGoal}
+            >
+              {savingGoal ? "保存中…" : "保存"}
+            </Button>
+          </div>
+          {goalMsg && (
+            <p className={`text-xs ${goalMsg.ok ? "text-emerald-600" : "text-destructive"}`}>
+              {goalMsg.text}
+            </p>
+          )}
+        </div>
 
         <form onSubmit={saveKey} className="flex flex-col gap-2">
           <Label htmlFor="serverchanKey">Server酱 SendKey（催学/提醒推送到微信）</Label>

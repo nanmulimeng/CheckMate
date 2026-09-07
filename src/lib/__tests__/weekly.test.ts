@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { computeWeekly, owedDays } from "../weekly";
+import { addDays, dateRange } from "../dates";
+import { computeWeekly, isFullAttendance, owedDays, weeklyBadges } from "../weekly";
 
 const rows = [
   { userId: 1, displayName: "甲", date: "2026-08-24", durationMinutes: 120, hasPhoto: true },
@@ -67,5 +68,111 @@ describe("缺卡只算注册之后（新用户不背注册前的欠账）", () =
   it("不传 registeredOnByUser 时保持旧口径（全周 7 天应打）", () => {
     const [stat] = computeWeekly(rows, "2026-08-24");
     expect(stat.missedDays).toBe(6);
+  });
+});
+
+describe("isFullAttendance（全勤 = 参与了且零缺卡）", () => {
+  it("零应付（未参与）不算", () => {
+    expect(isFullAttendance({ days: 0, missedDays: 0 })).toBe(false);
+  });
+  it("缺 1 天不算", () => {
+    expect(isFullAttendance({ days: 6, missedDays: 1 })).toBe(false);
+  });
+  it("打满应付天数算", () => {
+    expect(isFullAttendance({ days: 7, missedDays: 0 })).toBe(true);
+    expect(isFullAttendance({ days: 4, missedDays: 0 })).toBe(true); // 注册周 4/4
+  });
+});
+
+describe("weeklyBadges（weekStart=2026-08-31 周一；只和自己比：保底达标 ✅ / 全勤 🌟 / 连续达标 🔥 / 进步 📈）", () => {
+  type Row = { userId: number; date: string; durationMinutes: number; hasPhoto: boolean };
+  // 打满 ws 那周 7 天
+  const fill = (userId: number, ws: string): Row[] =>
+    dateRange(ws, addDays(ws, 6)).map((d) => ({ userId, date: d, durationMinutes: 60, hasPhoto: true }));
+  // 只打指定日期
+  const pick = (userId: number, dates: string[]): Row[] =>
+    dates.map((d) => ({ userId, date: d, durationMinutes: 60, hasPhoto: false }));
+
+  it("本周全勤 → goalMet/full/streak=1；上周整周在注册前（周一注册）→ 上周不存在，improved=false", () => {
+    const b = weeklyBadges(1, fill(1, "2026-08-31"), "2026-08-31", 6, "2026-08-31");
+    expect(b).toEqual({ goalMet: true, full: true, streak: 1, improved: false });
+  });
+
+  it("保底 5、打 5 天 → 达标但非全勤", () => {
+    const rows = pick(1, ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"]);
+    const b = weeklyBadges(1, rows, "2026-08-31", 5, "2026-08-01");
+    expect(b.goalMet).toBe(true);
+    expect(b.full).toBe(false);
+    expect(b.streak).toBe(1);
+  });
+
+  it("保底 6、本周+上周都达标 → streak=2", () => {
+    const rows = [...fill(1, "2026-08-24"), ...fill(1, "2026-08-31")];
+    expect(weeklyBadges(1, rows, "2026-08-31", 6).streak).toBe(2);
+  });
+
+  it("保底 6、上周打 6 天（达标）、本周 7 天 → streak 连着算（保底制下 6 天即达标，不像全勤那样断）", () => {
+    const rows = [...fill(1, "2026-08-24").slice(0, 6), ...fill(1, "2026-08-31")];
+    const b = weeklyBadges(1, rows, "2026-08-31", 6);
+    expect(b.streak).toBe(2);
+    expect(b.improved).toBe(true); // 7 > 6
+  });
+
+  it("上周 4 天未达标、本周 6 天达标 → streak=1 重新起算", () => {
+    const rows = [
+      ...pick(1, ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27"]),
+      ...pick(1, ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05"]),
+    ];
+    expect(weeklyBadges(1, rows, "2026-08-31", 6).streak).toBe(1);
+  });
+
+  it("注册周应付天数不足保底时按剩余天数折算：周四注册打满 4 天算达标，链止于注册周", () => {
+    // 08-27（周四）注册，保底 6 但只欠 4 天 → 4/4 达标；本周全勤 → streak=2，不是 3
+    const rows = [
+      ...pick(1, ["2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30"]),
+      ...fill(1, "2026-08-31"),
+    ];
+    const b = weeklyBadges(1, rows, "2026-08-31", 6, "2026-08-27");
+    expect(b.streak).toBe(2);
+  });
+
+  it("本周 5 天 < 保底 6 → 未达标 streak=0；且上周不存在（本周二才注册）→ improved=false", () => {
+    const rows = fill(1, "2026-08-31").slice(0, 5); // 09-01（周二）注册，打 5 天
+    const b = weeklyBadges(1, rows, "2026-08-31", 6, "2026-09-01");
+    expect(b).toEqual({ goalMet: false, full: false, streak: 0, improved: false });
+  });
+
+  it("improved：3→5 进步，5→5 持平不算", () => {
+    const up = [
+      ...pick(1, ["2026-08-24", "2026-08-25", "2026-08-26"]),
+      ...pick(1, ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"]),
+    ];
+    expect(weeklyBadges(1, up, "2026-08-31", 6).improved).toBe(true);
+    const flat = [
+      ...pick(1, ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28"]),
+      ...pick(1, ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"]),
+    ];
+    expect(weeklyBadges(1, flat, "2026-08-31", 6).improved).toBe(false);
+  });
+
+  it("rows 里混着别人的打卡不影响（按 userId 过滤）", () => {
+    const rows = [...fill(2, "2026-08-31"), ...fill(1, "2026-08-31")];
+    expect(weeklyBadges(1, rows, "2026-08-31", 6).full).toBe(true);
+    expect(weeklyBadges(2, rows, "2026-08-31", 6).full).toBe(true);
+  });
+
+  it("零打卡成员 → 全 false/0", () => {
+    const b = weeklyBadges(9, fill(1, "2026-08-31"), "2026-08-31", 6, "2026-08-01");
+    expect(b).toEqual({ goalMet: false, full: false, streak: 0, improved: false });
+  });
+
+  it("streak 封顶 52 周（无注册信息的老用户防死循环）", () => {
+    const many: Row[] = [];
+    let ws = "2026-08-31";
+    for (let i = 0; i < 60; i++) {
+      many.push(...fill(1, ws));
+      ws = addDays(ws, -7);
+    }
+    expect(weeklyBadges(1, many, "2026-08-31", 6).streak).toBe(52);
   });
 });

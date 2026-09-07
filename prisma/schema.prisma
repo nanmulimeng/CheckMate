@@ -13,6 +13,7 @@ model User {
   passwordHash  String
   displayName   String
   serverchanKey String?
+  weeklyGoalDays Int      @default(6) // 每周保底打卡天数（1-7）：周结算只和自己比
   isAdmin       Boolean   @default(false)
   createdAt     DateTime  @default(now())
   subjects      Subject[]

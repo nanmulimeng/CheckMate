@@ -41,8 +41,70 @@ export function computeWeekly(
     // 口径与个人页热力图一致：当天任一条打卡带照片即“有凭证”，整天全无照片才算无凭证天
     s.noProofDays = s.days - proofSet.get(s.userId)!.size;
     // 缺卡只算「注册之后应打而未打」的天：注册前的日子不算欠账，
-    // 否则新用户第一天就顶着「上周缺卡 7 天 + 奶茶候选人」开局。
+    // 否则新用户第一天就顶着「上周缺卡 7 天」开局。
     s.missedDays = owedDays(weekStart, registeredOnByUser?.get(s.userId)) - s.days;
   }
   return [...byUser.values()];
+}
+
+/** 全勤：参与了（至少打了一天）且应付天数零缺卡。应付 0 天（未参与）不算。 */
+export function isFullAttendance(s: Pick<WeeklyStat, "days" | "missedDays">): boolean {
+  return s.days > 0 && s.missedDays === 0;
+}
+
+/** 周结算徽章：只和自己比——保底达标 ✅ / 全勤 🌟 / 连续达标周数 🔥 / 较上周进步 📈。
+ *  goalDays 是本人的每周保底打卡天数（1-7，User.weeklyGoalDays，各自在设置页改，
+ *  课多的设低些、全力备考的设高些——奖惩基准是「自己的承诺」而非别人）。
+ *  rows 传注册以来全部打卡（混了别人的也行，内部按 userId 过滤）；
+ *  weekStart 是要结算的周（周一）。连续链在第一个未达标周或注册前的周处断开；
+ *  注册周应付天数不足保底时按剩余天数折算达标线（周三注册不该背 6 天的债）。 */
+export interface WeeklyBadges {
+  goalMet: boolean;
+  full: boolean;
+  streak: number; // 连续达标周数，含本周；本周未达标为 0
+  improved: boolean; // 打卡天数比上周多（上周须已注册存在）
+}
+
+// 老用户无注册信息时 streak 往前数的兜底上限：考研一年 52 周足够
+const STREAK_CAP = 52;
+
+export function weeklyBadges(
+  userId: number,
+  rows: { userId: number; date: string; durationMinutes: number; hasPhoto: boolean }[],
+  weekStart: string,
+  goalDays: number,
+  registeredOn?: string,
+): WeeklyBadges {
+  const mine = rows.filter((r) => r.userId === userId);
+
+  const statOf = (ws: string) => {
+    const days = new Set(dateRange(ws, addDays(ws, 6)));
+    const dayCount = new Set(mine.filter((r) => days.has(r.date)).map((r) => r.date)).size;
+    const owed = owedDays(ws, registeredOn);
+    return {
+      days: dayCount,
+      missedDays: Math.max(0, owed - dayCount),
+      goalMet: dayCount > 0 && dayCount >= Math.min(goalDays, owed),
+    };
+  };
+
+  const thisWeek = statOf(weekStart);
+  const full = isFullAttendance(thisWeek);
+
+  let streak = 0;
+  let ws = weekStart;
+  for (let i = 0; i < STREAK_CAP; i++) {
+    // 整周都在注册前 → 周不存在，链到此为止（注册周本身周末 >= 注册日，仍会被检查）
+    if (registeredOn && addDays(ws, 6) < registeredOn) break;
+    if (!statOf(ws).goalMet) break;
+    streak++;
+    ws = addDays(ws, -7);
+  }
+
+  // 上周存在 = 上周至少有一天在注册之后（无注册信息视为老用户，恒存在）
+  const lastStart = addDays(weekStart, -7);
+  const lastExisted = !registeredOn || addDays(lastStart, 6) >= registeredOn;
+  const improved = lastExisted && thisWeek.days > statOf(lastStart).days;
+
+  return { goalMet: thisWeek.goalMet, full, streak, improved };
 }
