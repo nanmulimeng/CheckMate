@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import CheckinCard from "@/components/checkin-card";
 import CountdownBar from "@/components/countdown-bar";
@@ -56,6 +57,9 @@ export default async function Home(props: PageProps<"/">) {
 
   // ?done=YYYY-MM-DD：打卡成功的确认横幅（checkin-form 提交后跳转带上）
   const doneParam = typeof sp.done === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.done) ? sp.done : null;
+  // &again=N：刚记的科目 id —— 横幅里「再来一条」直达打卡页并预选该科目
+  const againSubjectId =
+    doneParam && typeof sp.again === "string" && /^\d+$/.test(sp.again) ? sp.again : null;
   const makeup = feed.date !== beijingDateStr(now);
   const pending = feed.members.filter((m) => !m.hasCheckedIn);
 
@@ -79,9 +83,17 @@ export default async function Home(props: PageProps<"/">) {
       {doneParam && (
         <p
           role="status"
-          className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300"
+          className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300"
         >
-          已记入 {doneParam} ✓
+          <span>已记入 {doneParam} ✓</span>
+          {againSubjectId && (
+            <Link
+              href={`/checkin/new?subject=${againSubjectId}`}
+              className="shrink-0 rounded-md border border-emerald-300 px-2 py-0.5 text-xs underline-offset-2 hover:underline dark:border-emerald-500/40"
+            >
+              再来一条
+            </Link>
+          )}
         </p>
       )}
 

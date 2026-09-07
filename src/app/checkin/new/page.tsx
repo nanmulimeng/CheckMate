@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import CheckInForm, { type EditTarget } from "@/components/checkin-form";
 import { getSession } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
-import { addDays, beijingDateStr, canCheckInFor, defaultCheckInDate } from "@/lib/dates";
+import { addDays, beijingDateStr, canCheckInFor, defaultCheckInDate, mondayOf } from "@/lib/dates";
 import { getDeadlineHour } from "@/lib/settings";
 
 // 登录守卫：读取 session 必须走动态渲染
@@ -40,6 +40,19 @@ export default async function NewCheckInPage(props: PageProps<"/checkin/new">) {
     allowYesterday: canCheckInFor(addDays(today, -1), now, deadlineHour),
   };
 
+  // 本周一句话预填（归属日所在自然周；「后写覆盖」的编辑入口）
+  const existingNote = await db.weeklyNote.findUnique({
+    where: {
+      userId_weekStart: { userId: session.userId, weekStart: mondayOf(defaults.defaultDate) },
+    },
+    select: { content: true },
+  });
+
+  // ?subject=N 预选科目（首页「再来一条」跳转；合法性在表单里再验一次）
+  const rawSubject = typeof sp.subject === "string" ? Number(sp.subject) : NaN;
+  const preselectSubjectId =
+    Number.isInteger(rawSubject) && rawSubject > 0 ? rawSubject : undefined;
+
   let edit: EditTarget | null = null;
   const rawId = typeof sp.id === "string" ? sp.id : "";
   if (rawId !== "") {
@@ -65,5 +78,13 @@ export default async function NewCheckInPage(props: PageProps<"/checkin/new">) {
     }
   }
 
-  return <CheckInForm subjects={subjects} defaults={defaults} edit={edit} />;
+  return (
+    <CheckInForm
+      subjects={subjects}
+      defaults={defaults}
+      initialWeeklyNote={existingNote?.content ?? ""}
+      preselectSubjectId={preselectSubjectId}
+      edit={edit}
+    />
+  );
 }

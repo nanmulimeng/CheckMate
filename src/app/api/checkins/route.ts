@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { AuthError, requireUser } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
-import { canCheckInFor, defaultCheckInDate } from "@/lib/dates";
+import { canCheckInFor, defaultCheckInDate, mondayOf } from "@/lib/dates";
 import { validateCheckInPayload, validatePhotoIds } from "@/lib/checkin-validate";
 import { crossedMilestones } from "@/lib/milestones";
 import { getDeadlineHour } from "@/lib/settings";
 import { sendServerChan } from "@/lib/serverchan";
+
+// 每周一句话的长度上限（打卡页 textarea maxLength 同步）
+const WEEKLY_NOTE_LIMIT = 100;
 
 // POST /api/checkins — 创建打卡
 // body: { subjectId, date?, durationMinutes, note?, photoIds? } → { id }
@@ -21,6 +24,10 @@ export async function POST(req: NextRequest) {
     const note = body?.["note"];
     const rawDate = body?.["date"];
     const rawPhotoIds = body?.["photoIds"];
+    // 每周一句话（选填）：随打卡提交 upsert 到打卡归属日所在周，展示在周报/结算推送
+    const rawWeeklyNote = body?.["weeklyNote"];
+    if (rawWeeklyNote != null && (typeof rawWeeklyNote !== "string" || rawWeeklyNote.length > WEEKLY_NOTE_LIMIT))
+      return NextResponse.json({ error: "每周一句话需为不超过 100 字的文本" }, { status: 400 });
 
     const now = new Date();
     const deadlineHour = await getDeadlineHour();
@@ -67,6 +74,16 @@ export async function POST(req: NextRequest) {
       }
       return created;
     });
+
+    // 每周一句话：非空才 upsert（一周一条，后写覆盖；空字符串=没填，不动已有）
+    if (typeof rawWeeklyNote === "string" && rawWeeklyNote.trim()) {
+      const content = rawWeeklyNote.trim();
+      await db.weeklyNote.upsert({
+        where: { userId_weekStart: { userId, weekStart: mondayOf(date) } },
+        create: { userId, weekStart: mondayOf(date), content },
+        update: { content },
+      });
+    }
 
     revalidatePath("/");
 

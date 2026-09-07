@@ -22,6 +22,7 @@ model User {
   likes         Like[]
   nudgesSent    Nudge[]   @relation("from")
   nudgesGot     Nudge[]   @relation("to")
+  weeklyNotes   WeeklyNote[]
 }
 
 model Subject {
@@ -103,4 +104,17 @@ model Nudge {
 model Setting {
   key   String @id
   value String
+}
+
+// 每周一句话：本人给某自然周写的小目标/小结（入口在打卡页，随打卡一起提交），
+// 展示在周结算页成员行与周一结算推送里。一周一条，后写覆盖先写。
+model WeeklyNote {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  weekStart String // 该周的周一（YYYY-MM-DD）
+  content   String
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekStart])
 }

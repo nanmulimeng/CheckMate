@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { AuthError, requireUser } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
-import { canCheckInFor } from "@/lib/dates";
+import { canCheckInFor, mondayOf } from "@/lib/dates";
 import { validateCheckInPayload } from "@/lib/checkin-validate";
 import { deletePhoto } from "@/lib/photo-store";
 import { getDeadlineHour } from "@/lib/settings";
+
+// 每周一句话的长度上限（与创建路径一致）
+const WEEKLY_NOTE_LIMIT = 100;
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -24,7 +27,8 @@ async function findOwnCheckIn(id: number, userId: number) {
 }
 
 // PATCH /api/checkins/[id] — 编辑（仅本人，且打卡日期未过截止）
-// body: { subjectId?, durationMinutes?, note? }，任一字段可选。
+// body: { subjectId?, durationMinutes?, note?, weeklyNote? }，任一字段可选。
+// weeklyNote 是「本周一句话」（不属打卡本身，随编辑顺手 upsert 到归属周）。
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const { id: userId } = await requireUser();
@@ -45,6 +49,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     if (!validateCheckInPayload({ subjectId, durationMinutes, note }).ok)
       return NextResponse.json({ error: "科目或时长不合法（时长需为 1-960 分钟，备注 ≤500 字）" }, { status: 400 });
 
+    const rawWeeklyNote = body?.["weeklyNote"];
+    if (rawWeeklyNote != null && (typeof rawWeeklyNote !== "string" || rawWeeklyNote.length > WEEKLY_NOTE_LIMIT))
+      return NextResponse.json({ error: "每周一句话需为不超过 100 字的文本" }, { status: 400 });
+
     if (subjectId !== checkIn.subjectId) {
       const subject = await db.subject.findFirst({ where: { id: subjectId as number, userId } });
       if (!subject)
@@ -59,6 +67,17 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         note: typeof note === "string" ? note : "",
       },
     });
+
+    // 每周一句话：与创建同款 upsert（非空才写，一周一条后写覆盖）
+    if (typeof rawWeeklyNote === "string" && rawWeeklyNote.trim()) {
+      const content = rawWeeklyNote.trim();
+      const weekStart = mondayOf(checkIn.date);
+      await db.weeklyNote.upsert({
+        where: { userId_weekStart: { userId, weekStart } },
+        create: { userId, weekStart, content },
+        update: { content },
+      });
+    }
 
     revalidatePath("/");
     return NextResponse.json({ id: parsed });

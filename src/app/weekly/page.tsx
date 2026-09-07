@@ -51,7 +51,7 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
   const weekStart = requested || latest;
   const weekEnd = addDays(weekStart, 6);
 
-  const [users, allRows] = await Promise.all([
+  const [users, allRows, notes] = await Promise.all([
     db.user.findMany({
       select: { id: true, displayName: true, createdAt: true, weeklyGoalDays: true },
       orderBy: { id: "asc" },
@@ -63,7 +63,10 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
       where: { date: { lte: weekEnd } },
       select: { userId: true, date: true, durationMinutes: true, hasPhoto: true, createdAt: true, user: { select: { displayName: true } } },
     }),
+    db.weeklyNote.findMany({ where: { weekStart }, select: { userId: true, content: true } }),
   ]);
+  // 每周一句话：成员行名字下方展示（没写的不占位）
+  const noteByUser = new Map(notes.map((n) => [n.userId, n.content]));
   // 注册日按北京时区折算成日期串（与 CheckIn.date 同一口径）
   const registeredOn = new Map(users.map((u) => [u.id, beijingDateStr(u.createdAt)]));
 
@@ -305,6 +308,11 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
                         共学 {(s.totalMinutes / 60).toFixed(1)} 小时
                         {s.noProofDays > 0 && <> · 无凭证 {s.noProofDays} 天</>}
                       </p>
+                      {noteByUser.has(s.userId) && (
+                        <p className="mt-1.5 border-l-2 border-border pl-2 text-xs leading-relaxed text-muted-foreground">
+                          {noteByUser.get(s.userId)}
+                        </p>
+                      )}
                     </li>
                   );
                 })}

@@ -44,22 +44,36 @@ export interface EditTarget {
 
 const QUICK_DURATIONS = [30, 60, 90, 120];
 const NOTE_LIMIT = 500;
+const WEEKLY_NOTE_LIMIT = 100;
 
 export default function CheckInForm({
   subjects,
   defaults,
+  initialWeeklyNote = "",
+  preselectSubjectId,
   edit = null,
 }: {
   subjects: { id: number; name: string }[];
   defaults: CheckInDefaults;
+  /** 本周已写的那句话（服务端查好传入，覆盖式编辑） */
+  initialWeeklyNote?: string;
+  /** ?subject=N 预选科目（「再来一条」跳转用） */
+  preselectSubjectId?: number;
   edit?: EditTarget | null;
 }) {
   const router = useRouter();
   const [subjectId, setSubjectId] = useState<string>(
-    edit ? String(edit.subjectId) : subjects[0] ? String(subjects[0].id) : "",
+    edit
+      ? String(edit.subjectId)
+      : preselectSubjectId && subjects.some((s) => s.id === preselectSubjectId)
+        ? String(preselectSubjectId)
+        : subjects[0]
+          ? String(subjects[0].id)
+          : "",
   );
   const [duration, setDuration] = useState(edit ? String(edit.durationMinutes) : "60");
   const [note, setNote] = useState(edit?.note ?? "");
+  const [weeklyNote, setWeeklyNote] = useState(initialWeeklyNote);
   // 编辑模式不改日期（PATCH 不接受 date 字段），这个 state 仅供创建路径用
   const [date, setDate] = useState(defaults.defaultDate);
   const [error, setError] = useState("");
@@ -93,7 +107,7 @@ export default function CheckInForm({
     try {
       let res: Response;
       if (edit) {
-        // 编辑：PATCH 只改科目/时长/备注，照片维持原样（日期不可改）
+        // 编辑：PATCH 只改科目/时长/备注（+每周一句话），照片维持原样（日期不可改）
         res = await fetch(`/api/checkins/${edit.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -101,6 +115,7 @@ export default function CheckInForm({
             subjectId: Number(subjectId),
             durationMinutes: minutes,
             note,
+            weeklyNote: weeklyNote.trim(),
           }),
         });
       } else {
@@ -114,12 +129,14 @@ export default function CheckInForm({
             durationMinutes: minutes,
             note,
             photoIds,
+            weeklyNote: weeklyNote.trim(),
           }),
         });
       }
       if (res.ok) {
-        // 创建成功带上记入日期：首页横幅确认「已记入 N月N日」，凌晨补昨天的卡不再像消失了一样
-        const target = edit ? "/" : `/?done=${date}`;
+        // 创建成功带上记入日期：首页横幅确认「已记入 N月N日」（&again=科目 id
+        // 供「再来一条」预选），凌晨补昨天的卡不再像消失了一样
+        const target = edit ? "/" : `/?done=${date}&again=${Number(subjectId)}`;
         router.push(target);
         router.refresh();
         return;
@@ -226,6 +243,21 @@ export default function CheckInForm({
               />
               <span className="self-end text-xs text-muted-foreground">
                 {note.length}/{NOTE_LIMIT}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="weekly-note">本周一句话（选填）</Label>
+              <Textarea
+                id="weekly-note"
+                maxLength={WEEKLY_NOTE_LIMIT}
+                rows={2}
+                value={weeklyNote}
+                onChange={(e) => setWeeklyNote(e.target.value)}
+                placeholder="比如：这周把英语真题 2010-2015 刷完"
+              />
+              <span className="text-xs text-muted-foreground">
+                写句本周的小目标或小结，会出现在周结算里；一周一条，后写覆盖。
               </span>
             </div>
 

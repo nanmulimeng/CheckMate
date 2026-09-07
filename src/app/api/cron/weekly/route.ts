@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const weekStart = lastMonday(new Date());
     const weekEnd = addDays(weekStart, 6);
     const db = getPrisma();
-    const [users, allRows] = await Promise.all([
+    const [users, allRows, weeklyNotes] = await Promise.all([
       db.user.findMany({
         select: { id: true, displayName: true, serverchanKey: true, createdAt: true, weeklyGoalDays: true },
         orderBy: { id: "asc" },
@@ -33,7 +33,9 @@ export async function GET(req: NextRequest) {
         where: { date: { lte: weekEnd } },
         select: { userId: true, date: true, durationMinutes: true, hasPhoto: true, user: { select: { displayName: true } } },
       }),
+      db.weeklyNote.findMany({ where: { weekStart }, select: { userId: true, content: true } }),
     ]);
+    const noteByUser = new Map(weeklyNotes.map((n) => [n.userId, n.content]));
     // 注册日按北京时区折算成日期串（与 CheckIn.date 同一口径）
     const registeredOn = new Map(users.map((u) => [u.id, beijingDateStr(u.createdAt)]));
 
@@ -82,6 +84,8 @@ export async function GET(req: NextRequest) {
       if (b.full) parts.push("全勤");
       if (b.streak >= 2) parts.push(`连续第 ${b.streak} 周达标`);
       if (b.improved) parts.push("比上周多");
+      const note = noteByUser.get(u.id);
+      if (note) parts.push(`本周一句话：${note}`);
       const summary = `${parts.join(" · ")} · ${groupLine}`;
       // sendServerChan 永不抛出，失败只记日志，不影响结算与响应
       await sendServerChan(u.serverchanKey, "上周学习结算", summary);
