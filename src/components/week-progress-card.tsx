@@ -3,13 +3,16 @@ import type { WeekProgress } from "@/lib/weekly";
 
 // 首页「本周保底」进度条：7 格对应周一~周日，打卡的天点亮，
 // 今天描边，未来留虚线空格。全部状态在服务端算好（lib/weekly.weekProgress），
-// 组件只做展示。todayMinutes 是归属日当天已学分钟数（0 时省略）。
+// 组件只做展示。todayMinutes 是归属日当天已学分钟数（0 时省略）；
+// dayLabel 是归属日的叫法（「今天」/凌晨补卡时段的「昨天」），随文案切换。
 export default function WeekProgressCard({
   progress,
   todayMinutes,
+  dayLabel = "今天",
 }: {
   progress: WeekProgress;
   todayMinutes: number;
+  dayLabel?: string;
 }) {
   const done = progress.remaining === 0;
   return (
@@ -54,7 +57,7 @@ export default function WeekProgressCard({
       </div>
       <p className="mt-2.5 text-xs text-muted-foreground">
         {progress.text}
-        {todayMinutes > 0 && <> · 今天已学 {(todayMinutes / 60).toFixed(1)} 小时</>}
+        {todayMinutes > 0 && <> · {dayLabel}已学 {(todayMinutes / 60).toFixed(1)} 小时</>}
       </p>
     </section>
   );

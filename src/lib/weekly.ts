@@ -41,8 +41,10 @@ export function computeWeekly(
     // 口径与个人页热力图一致：当天任一条打卡带照片即“有凭证”，整天全无照片才算无凭证天
     s.noProofDays = s.days - proofSet.get(s.userId)!.size;
     // 缺卡只算「注册之后应打而未打」的天：注册前的日子不算欠账，
-    // 否则新用户第一天就顶着「上周缺卡 7 天」开局。
-    s.missedDays = owedDays(weekStart, registeredOnByUser?.get(s.userId)) - s.days;
+    // 否则新用户第一天就顶着「上周缺卡 7 天」开局。夹紧到 0：
+    // 注册日凌晨补过昨天的卡时 days 可能超过 owed，负数没有意义
+    // （且会让 isFullAttendance 在本路径与 weeklyBadges 的判定分叉）。
+    s.missedDays = Math.max(0, owedDays(weekStart, registeredOnByUser?.get(s.userId)) - s.days);
   }
   return [...byUser.values()];
 }
@@ -84,7 +86,9 @@ export function weeklyBadges(
     return {
       days: dayCount,
       missedDays: Math.max(0, owed - dayCount),
-      goalMet: dayCount > 0 && dayCount >= Math.min(goalDays, owed),
+      // owed=0（整周在注册之后）：这周对本人不存在，谈不上达标与否——
+      // 判 false 且调用方应把该成员排除出奖惩/分母，而不是挂「未达标」
+      goalMet: owed > 0 && dayCount >= Math.min(goalDays, owed),
     };
   };
 

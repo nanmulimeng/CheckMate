@@ -42,6 +42,14 @@ describe("weeklyAchievementFacts（逐周扫描；lastFullWeekStart=2026-09-07 �
     expect(f.fullWeeks).toBe(1);
   });
 
+  it("全勤 = 打满应付天数（多打不罚）：注册凌晨补过昨天的卡（cnt>owed）仍算全勤，与周页星标同口径", () => {
+    // 注册 2026-09-01（周二），凌晨窗口补打了 08-31（周一，注册前）→ 该周 7 天 > 应付 6 天
+    const dates = dateRange("2026-08-31", "2026-09-06");
+    const f = weeklyAchievementFacts(dates, 6, "2026-09-01", last);
+    expect(f.fullWeeks).toBe(1); // cnt(7) >= owed(6)，而非 === 造成的漏计
+    expect(f.bestGoalStreak).toBe(1);
+  });
+
   it("无注册信息时最多回看 52 周（防死循环）", () => {
     const dates: string[] = [];
     let ws = addDays(mondayOf(last), -7 * 100); // 100 周前起每周全打，共 101 周含最近周

@@ -45,13 +45,16 @@ export function weeklyAchievementFacts(
     const owed = owedDays(w, registeredOn);
     let cnt = 0;
     for (let i = 0; i < 7; i++) if (daySet.has(addDays(w, i))) cnt++;
-    const goalMet = cnt > 0 && cnt >= Math.min(goalDays, owed);
+    // 与 weeklyBadges 同口径：owed=0 的周不进列表（见上方周列表构造），
+    // 这里仍防御性判 owed>0；全勤 = 打满应付天数（多打不罚，>= 而非 ===，
+    // 否则「注册凌晨补昨卡导致 cnt>owed」的周会在周页亮星、成就墙却不认）
+    const goalMet = owed > 0 && cnt >= Math.min(goalDays, owed);
     goalMetByWeek.push(goalMet);
     if (goalMet) {
       streak++;
       bestGoalStreak = Math.max(bestGoalStreak, streak);
     } else streak = 0;
-    if (cnt > 0 && cnt === owed) fullWeeks++;
+    if (owed > 0 && cnt >= owed) fullWeeks++;
   }
 
   const comeback =

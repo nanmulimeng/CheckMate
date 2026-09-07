@@ -78,7 +78,7 @@ export default async function Home(props: PageProps<"/">) {
 
       <CountdownBar examDate={feed.examDate} daysToExam={feed.daysToExam} />
 
-      <WeekProgressCard progress={progress} todayMinutes={todayMinutes} />
+      <WeekProgressCard progress={progress} todayMinutes={todayMinutes} dayLabel={makeup ? "昨天" : "今天"} />
 
       {doneParam && (
         <p

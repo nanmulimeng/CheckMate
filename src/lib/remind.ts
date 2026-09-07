@@ -1,5 +1,5 @@
 import { getPrisma } from "./db";
-import { beijingDateStr, beijingHour, deadlineOf } from "./dates";
+import { beijingHour, deadlineOf, defaultCheckInDate } from "./dates";
 import { sendServerChan } from "./serverchan";
 import { getDeadlineHour, getSetting } from "./settings";
 
@@ -21,12 +21,15 @@ export async function sendReminders(force: boolean): Promise<
       return { skipped: true, reason: "hour" };
   }
 
-  const date = beijingDateStr(new Date());
+  // 「今天」以归属日为准（与首页/催学同锚）：凌晨截止窗口内当前开放日仍是
+  // 昨天，已打过昨天卡的人不该被催；剩余时长也按归属日的截止点算，
+  // 否则 remind_hour < deadline_hour 的配置下全员误报 + 时长谎报
+  const deadlineHour = await getDeadlineHour();
+  const date = defaultCheckInDate(new Date(), deadlineHour);
   const db = getPrisma();
-  const [checkedIn, users, deadlineHour] = await Promise.all([
+  const [checkedIn, users] = await Promise.all([
     db.checkIn.findMany({ where: { date }, select: { userId: true } }),
     db.user.findMany({ select: { id: true, serverchanKey: true } }),
-    getDeadlineHour(),
   ]);
   const done = new Set(checkedIn.map((c) => c.userId));
   // 剩余时长随 remind_hour/deadline_hour 配置浮动（如 22 点提醒 + 1 点截止 = 3 小时），

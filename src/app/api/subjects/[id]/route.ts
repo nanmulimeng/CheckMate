@@ -92,7 +92,12 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     if (checkinCount > 0)
       return NextResponse.json({ error: "该科目有历史打卡，不能删除（可改名）" }, { status: 409 });
 
-    await db.subject.delete({ where: { id: parsed } });
+    try {
+      await db.subject.delete({ where: { id: parsed } });
+    } catch (e) {
+      // 并发双删：另一个请求已删掉——结果一致，视为成功
+      if ((e as { code?: string }).code !== "P2025") throw e;
+    }
     return NextResponse.json({ id: parsed });
   } catch (e) {
     if (e instanceof AuthError)

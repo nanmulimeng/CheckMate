@@ -25,6 +25,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import PhotoPicker, { type PhotoPickerHandle } from "@/components/photo-picker";
+import { mondayOf } from "@/lib/dates";
 
 export interface CheckInDefaults {
   defaultDate: string;
@@ -50,6 +51,7 @@ export default function CheckInForm({
   subjects,
   defaults,
   initialWeeklyNote = "",
+  weeklyNoteWeek,
   preselectSubjectId,
   edit = null,
 }: {
@@ -57,6 +59,10 @@ export default function CheckInForm({
   defaults: CheckInDefaults;
   /** 本周已写的那句话（服务端查好传入，覆盖式编辑） */
   initialWeeklyNote?: string;
+  /** 预填那句话所属的周（周一日期串）。创建路径切「记入日期」跨周时
+   *  预填内容不再适用（它属于另一周），清空让用户给新周重写，避免
+   *  上周的句子被提交进本周（后写覆盖）。编辑模式日期不可改，用不到。 */
+  weeklyNoteWeek?: string;
   /** ?subject=N 预选科目（「再来一条」跳转用） */
   preselectSubjectId?: number;
   edit?: EditTarget | null;
@@ -119,6 +125,12 @@ export default function CheckInForm({
           }),
         });
       } else {
+        // 有失败且未移除的照片先拦下：不拦的话错误提示会跟着成功跳转
+        // 一闪而过，用户带着缺照片的卡离开还以为全都传上去了
+        if (await pickerRef.current?.hasFailed()) {
+          setError("有照片还没传成功，请点它重试或移除后再打卡");
+          return;
+        }
         const photoIds = (await pickerRef.current?.getPhotoIds()) ?? [];
         res = await fetch("/api/checkins", {
           method: "POST",
@@ -277,7 +289,13 @@ export default function CheckInForm({
                       key={d}
                       type="button"
                       variant={date === d ? "default" : "outline"}
-                      onClick={() => setDate(d)}
+                      onClick={() => {
+                        setDate(d);
+                        // 切到另一周的日期（周一凌晨把「昨天」切「今天」）：
+                        // 预填的每周一句话属于原来的周，不能跟着提交进新周
+                        if (weeklyNoteWeek && mondayOf(d) !== weeklyNoteWeek && weeklyNote)
+                          setWeeklyNote("");
+                      }}
                     >
                       {d === defaults.yesterday ? "记入昨天" : "记入今天"}
                     </Button>

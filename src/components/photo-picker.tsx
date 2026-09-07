@@ -35,6 +35,10 @@ export interface PhotoPickerHandle {
    *  已移除/上传失败的照片不会出现在结果里（失败会通过 onError 告知，
    *  界面上也有失败标记，可重试或移除——不会静默丢弃）。 */
   getPhotoIds: () => Promise<number[]>;
+  /** 等待在途上传结束后，是否仍有失败（且未移除）的照片。
+   *  表单提交前先问这道：有失败就阻断打卡，否则错误提示会随跳转一闪而过，
+   *  用户带着缺照片的卡离开还以为全都传上去了。 */
+  hasFailed: () => Promise<boolean>;
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
@@ -104,6 +108,10 @@ export default function PhotoPicker({
         if (failed > 0)
           onError?.(`${failed} 张照片上传失败，本次打卡未带上；可重试或移除`);
         return ids;
+      },
+      hasFailed: async () => {
+        await Promise.allSettled([...tasksRef.current.values()]);
+        return [...resultsRef.current.values()].some((v) => v == null);
       },
     }),
     [onError],

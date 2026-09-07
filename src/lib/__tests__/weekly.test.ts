@@ -65,6 +65,16 @@ describe("缺卡只算注册之后（新用户不背注册前的欠账）", () =
     expect(stat.missedDays).toBe(3);
   });
 
+  it("注册凌晨补过昨天的卡（days > owed）→ 缺卡夹紧为 0，不出负数", () => {
+    // 08-27（周四）注册，凌晨窗口里补打了 08-26（注册前）+ 打满 27~30 → 5 天 > 应付 4 天
+    const early = dateRange("2026-08-26", "2026-08-30").map((d) => ({
+      userId: 3, displayName: "丙", date: d, durationMinutes: 60, hasPhoto: true,
+    }));
+    const [stat] = computeWeekly(early, "2026-08-24", new Map([[3, "2026-08-27"]]));
+    expect(stat.days).toBe(5);
+    expect(stat.missedDays).toBe(0); // 而非 4 - 5 = -1
+  });
+
   it("不传 registeredOnByUser 时保持旧口径（全周 7 天应打）", () => {
     const [stat] = computeWeekly(rows, "2026-08-24");
     expect(stat.missedDays).toBe(6);
@@ -104,6 +114,16 @@ describe("weeklyBadges（weekStart=2026-08-31 周一；只和自己比：保底�
     expect(b.goalMet).toBe(true);
     expect(b.full).toBe(false);
     expect(b.streak).toBe(1);
+  });
+
+  it("结算周之后才注册（owed=0）→ 这周对本人不适用：不算达标也不算未达标", () => {
+    // 2026-09-02（下周三）注册；回看 08-31 那周 owed=0。
+    // goalMet=false 的语义是「不适用」，调用方据此把人排除出奶茶徽章/达标分母
+    const b = weeklyBadges(1, [], "2026-08-31", 6, "2026-09-02");
+    expect(b.goalMet).toBe(false);
+    expect(b.full).toBe(false);
+    expect(b.streak).toBe(0);
+    expect(b.improved).toBe(false);
   });
 
   it("保底 6、本周+上周都达标 → streak=2", () => {

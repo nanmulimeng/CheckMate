@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { AuthError, requireUser } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
-import { canCheckInFor, defaultCheckInDate, mondayOf } from "@/lib/dates";
+import { beijingDateStr, canCheckInFor, defaultCheckInDate, mondayOf } from "@/lib/dates";
 import { validateCheckInPayload, validatePhotoIds } from "@/lib/checkin-validate";
 import { crossedMilestones } from "@/lib/milestones";
 import { getDeadlineHour } from "@/lib/settings";
@@ -40,6 +40,15 @@ export async function POST(req: NextRequest) {
     const date = typeof rawDate === "string" && rawDate ? rawDate : defaultCheckInDate(now, deadlineHour);
     if (!canCheckInFor(date, now, deadlineHour))
       return NextResponse.json({ error: "已过截止时间，不可补卡" }, { status: 403 });
+
+    // 注册日之前的卡不许打：注册当天的凌晨补卡窗口里「昨天」早于注册日，
+    // 放过去会让周结算出现 days > owed（负缺卡/全勤口径分叉）。
+    // requireUser 已确认用户存在，这里不会再拿到 null
+    const registeredOn = beijingDateStr(
+      (await getPrisma().user.findUnique({ where: { id: userId }, select: { createdAt: true } }))!.createdAt,
+    );
+    if (date < registeredOn)
+      return NextResponse.json({ error: "不能打注册之前的卡" }, { status: 400 });
 
     // photoIds 可选：正整数数组、最多 3 张（规则收口在 checkin-validate 纯函数）
     const photoError = validatePhotoIds(rawPhotoIds);

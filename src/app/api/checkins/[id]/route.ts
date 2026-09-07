@@ -110,7 +110,12 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
       where: { checkInId: parsed },
       select: { id: true, filePath: true },
     });
-    await db.checkIn.delete({ where: { id: parsed } });
+    try {
+      await db.checkIn.delete({ where: { id: parsed } });
+    } catch (e) {
+      // 并发双删：另一个请求已删掉这张卡——结果一致，视为成功（照片它已负责清理）
+      if ((e as { code?: string }).code !== "P2025") throw e;
+    }
     for (const p of photos) {
       try {
         await deletePhoto(p.filePath); // ENOENT（文件已不在）静默忽略

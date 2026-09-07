@@ -111,12 +111,18 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
     ]),
   );
 
-  // 全组汇总：叙事是「我们这周一起」，不是「谁落后了」
+  // 全组汇总：叙事是「我们这周一起」，不是「谁落后了」。
+  // 分母只算「这周对本人存在」的成员（owed>0）：结算周之后才注册的人
+  // 不欠这周的账，不该被算进「X 人里 Y 人达标」，更不该压灭全员达标星标
+  const owedByUser = new Map(
+    users.map((u) => [u.id, owedDays(weekStart, registeredOn.get(u.id))]),
+  );
+  const participants = users.filter((u) => (owedByUser.get(u.id) ?? 0) > 0);
   const totalDays = stats.reduce((a, s) => a + s.days, 0);
   const totalHours = stats.reduce((a, s) => a + s.totalMinutes, 0) / 60;
-  const goalMetCount = users.filter((u) => badges.get(u.id)?.goalMet).length;
-  const fullCount = users.filter((u) => badges.get(u.id)?.full).length;
-  const allGoalMet = users.length > 0 && goalMetCount === users.length;
+  const goalMetCount = participants.filter((u) => badges.get(u.id)?.goalMet).length;
+  const fullCount = participants.filter((u) => badges.get(u.id)?.full).length;
+  const allGoalMet = participants.length > 0 && goalMetCount === participants.length;
 
   // 全组合力里程碑：回看历史周时显示的是「截至该周」的累计（与行数据同口径），
   // 解锁日期按打卡先后累加回推。琥珀色 = 全组的远方（个人保底是绿色）。
@@ -181,7 +187,7 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
                   <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden />
-                  达标 {goalMetCount}/{users.length} 人
+                  达标 {goalMetCount}/{participants.length} 人
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <Star className="size-3.5 fill-amber-300 text-amber-500" aria-hidden />
@@ -231,12 +237,16 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
                 {stats.map((s) => {
                   const b = badges.get(s.userId)!;
                   const strip = strips.get(s.userId)!;
+                  // 分母按应付天数折算（周中注册只算注册后的天）；
+                  // owed=0 = 这周（或这一周回看时段）本人还没加入，不参与奖惩
+                  const owed = owedByUser.get(s.userId) ?? 7;
+                  const goal = Math.min(goals.get(s.userId)!, owed);
                   return (
                     <li key={s.userId} className="border-b py-3 last:border-b-0 last:pb-0 first:pt-0">
                       <div className="flex items-center justify-between gap-2">
                         <span className="flex min-w-0 flex-wrap items-center gap-1.5">
                           <span className="truncate font-medium">{s.displayName}</span>
-                          {!b.goalMet && (
+                          {!b.goalMet && owed > 0 && (
                             <Badge className="shrink-0 gap-1 border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
                               <CupSoda className="size-3" aria-hidden />
                               奶茶候选人
@@ -265,19 +275,25 @@ export default async function WeeklyPage(props: PageProps<"/weekly">) {
                           )}
                         </span>
                         <span className="shrink-0 tabular-nums text-sm">
-                          {s.days}/{goals.get(s.userId)}
-                          {b.goalMet && (
+                          {owed > 0 ? (
+                            <>
+                              {s.days}/{goal}
+                              {b.goalMet && (
                             <Check
                               className="ml-0.5 inline size-3.5 align-[-2px] text-emerald-600 dark:text-emerald-400"
                               aria-label="达到保底"
                             />
+                          )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">未加入</span>
                           )}
                         </span>
                       </div>
                       <div
                         className="mt-2 flex items-end gap-1.5"
                         role="img"
-                        aria-label={`周条：${s.days}/${goals.get(s.userId)} 天，有相机的天表示有照片凭证`}
+                        aria-label={`周条：${s.days}/${goal} 天，有相机的天表示有照片凭证`}
                       >
                         {strip.map((c) => (
                           <div key={c.date} className="flex min-w-0 flex-1 flex-col items-center gap-1">

@@ -72,14 +72,20 @@ export async function GET(req: NextRequest) {
 
     for (const u of users) {
       if (!u.serverchanKey) continue;
+      // 结算周之后才注册的成员：上周对 TA 还不存在，不推结算
+      // （否则收到「0/6 差 6 天（奶茶候选人）」的冤枉账）
+      const owed = owedDays(weekStart, registeredOn.get(u.id));
+      if (owed === 0) continue;
       const s = report.find((r) => r.userId === u.id)!;
       const b = badges.get(u.id)!;
       // 逐人文案示例（只和自己比，正向先行；纯文字，微信端各机型渲染一致）：
       //   达标：「本周打卡 6/6 天，达到保底 · 共 12.5 小时 · 比上周多 · 全组这周…」
       //   未达：「本周打卡 4/6 天，差 2 天（奶茶候选人） · 共 8 小时 · 全组这周…」
+      // 达标线按应付天数折算（周中注册只算注册后的天），与页面同口径
+      const goal = Math.min(goalDays.get(u.id)!, owed);
       const mine = b.goalMet
-        ? `本周打卡 ${s.days}/${goalDays.get(u.id)} 天，达到保底`
-        : `本周打卡 ${s.days}/${goalDays.get(u.id)} 天，差 ${goalDays.get(u.id)! - s.days} 天（奶茶候选人）`;
+        ? `本周打卡 ${s.days}/${goal} 天，达到保底`
+        : `本周打卡 ${s.days}/${goal} 天，差 ${goal - s.days} 天（奶茶候选人）`;
       const parts = [mine, `共 ${(s.totalMinutes / 60).toFixed(1)} 小时`];
       if (b.full) parts.push("全勤");
       if (b.streak >= 2) parts.push(`连续第 ${b.streak} 周达标`);

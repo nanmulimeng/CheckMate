@@ -40,20 +40,15 @@ export default async function NewCheckInPage(props: PageProps<"/checkin/new">) {
     allowYesterday: canCheckInFor(addDays(today, -1), now, deadlineHour),
   };
 
-  // 本周一句话预填（归属日所在自然周；「后写覆盖」的编辑入口）
-  const existingNote = await db.weeklyNote.findUnique({
-    where: {
-      userId_weekStart: { userId: session.userId, weekStart: mondayOf(defaults.defaultDate) },
-    },
-    select: { content: true },
-  });
-
   // ?subject=N 预选科目（首页「再来一条」跳转；合法性在表单里再验一次）
   const rawSubject = typeof sp.subject === "string" ? Number(sp.subject) : NaN;
   const preselectSubjectId =
     Number.isInteger(rawSubject) && rawSubject > 0 ? rawSubject : undefined;
 
   let edit: EditTarget | null = null;
+  // 编辑模式的预填周锚：卡归属日所在周（与 PATCH 提交的 upsert 同锚），
+  // 而不是页面默认归属日——周一凌晨编辑「今天」的卡时两者差一周
+  let editNoteWeek: string | null = null;
   const rawId = typeof sp.id === "string" ? sp.id : "";
   if (rawId !== "") {
     const id = Number(rawId);
@@ -70,6 +65,7 @@ export default async function NewCheckInPage(props: PageProps<"/checkin/new">) {
           durationMinutes: target.durationMinutes,
           note: target.note,
         };
+        editNoteWeek = mondayOf(target.date);
       } else {
         redirect("/");
       }
@@ -78,11 +74,23 @@ export default async function NewCheckInPage(props: PageProps<"/checkin/new">) {
     }
   }
 
+  // 本周一句话预填（编辑=卡归属周；创建=默认归属日所在周。「后写覆盖」的编辑入口）
+  const existingNote = await db.weeklyNote.findUnique({
+    where: {
+      userId_weekStart: {
+        userId: session.userId,
+        weekStart: editNoteWeek ?? mondayOf(defaults.defaultDate),
+      },
+    },
+    select: { content: true },
+  });
+
   return (
     <CheckInForm
       subjects={subjects}
       defaults={defaults}
       initialWeeklyNote={existingNote?.content ?? ""}
+      weeklyNoteWeek={mondayOf(defaults.defaultDate)}
       preselectSubjectId={preselectSubjectId}
       edit={edit}
     />
