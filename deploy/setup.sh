@@ -62,8 +62,9 @@ echo "==> [5/5] /etc/crontab（业务 cron + 备份；幂等：已有则跳过�
 # 应用监听 0.0.0.0:3210（直连对外），cron 走本机回环即可。
 # remind 是每小时整点打点：到不到提醒小时由应用里的 Setting.remind_hour 决定
 #（管理员在 /admin 改，即时生效，不用回来改 crontab）。
-# weekly 定在周一 01:10：补卡窗口开到次日北京 01:00（src/lib/dates.ts 的截止），
-# 结算必须等窗口关上再跑，否则凌晨补的周日卡会漏出周报。
+# weekly 定在周一 09:07：补卡窗口开到次日北京 01:00（src/lib/dates.ts 的截止），
+# 结算必须等窗口关上再跑，否则凌晨补的周日卡会漏出周报；但推送会吵醒人，
+# 所以窗口关闭（01:00）后不立即跑，挪到早上——数据一样完整，人已起床。
 # 备份走 backup.sh：SQLite 在线快照（避免直接 tar 运行中的库文件拿到撕裂副本）
 # + 照片目录，保留最近 7 份，输出进 backups/backup.log。
 sudo tee /opt/checkmate/backup.sh >/dev/null <<'EOF'
@@ -87,7 +88,7 @@ sudo chmod +x /opt/checkmate/backup.sh
 if ! sudo grep -q 'api/cron/remind' /etc/crontab; then
   sudo tee -a /etc/crontab >/dev/null <<'EOF'
 0 * * * * root curl -s "http://127.0.0.1:3210/api/cron/remind?secret=__SECRET__" >/dev/null
-10 1 * * 1 root curl -s "http://127.0.0.1:3210/api/cron/weekly?secret=__SECRET__" >/dev/null
+7 9 * * 1 root curl -s "http://127.0.0.1:3210/api/cron/weekly?secret=__SECRET__" >/dev/null
 30 3 * * * root curl -s "http://127.0.0.1:3210/api/cron/cleanup?secret=__SECRET__" >/dev/null
 0 4 * * * root /opt/checkmate/backup.sh >> /var/lib/checkmate/backups/backup.log 2>&1
 EOF

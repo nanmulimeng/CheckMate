@@ -6,7 +6,8 @@ import { sendServerChan } from "@/lib/serverchan";
 import { getSetting, setSetting } from "@/lib/settings";
 import { computeWeekly, owedDays, type WeeklyStat } from "@/lib/weekly";
 
-// GET /api/cron/weekly?secret=… — 周一 00:10 由 crontab 调用。
+// GET /api/cron/weekly?secret=… — 周一 09:07 由 crontab 调用（补卡窗口 01:00
+// 关闭后不立即跑，凌晨推送吵醒人；早上跑数据一样完整）。
 // 结算「上个完整周」（lastMonday 起 7 天）：全员逐人推送一行摘要，
 // 并把完整结果 JSON 存 Setting.weekly_report_<weekStart>（推送历史/回看，
 // /weekly 页面本身始终从 CheckIn 实时重算，不读这份存档）。
