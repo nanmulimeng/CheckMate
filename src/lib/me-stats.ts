@@ -1,6 +1,7 @@
 import { getPrisma } from "./db";
-import { addDays, beijingDateStr, dateRange, mondayOf } from "./dates";
+import { addDays, beijingDateStr, dateRange, lastMonday, mondayOf } from "./dates";
 import { computeStreak } from "./streak";
+import { computeAchievements, weeklyAchievementFacts, type Achievement } from "./achievements";
 
 // 个人页（/me）聚合：热力图窗口/色阶映射/科目横条都是纯函数（可测），
 // getMeStats 查库后拼装。streak/累计值统计全部历史，热力图只看近 26 周。
@@ -36,6 +37,8 @@ export interface MeStats {
   heatRecords: HeatRecord[];
   /** 按总分钟降序的科目横条；全部为 0 时为空数组 */
   subjects: SubjectBar[];
+  /** 成就墙（只和自己比的长期里程碑，解锁规则收口在 lib/achievements） */
+  achievements: Achievement[];
 }
 
 /** 四级色阶下标：0 无 / 1 无凭证 / 2 有凭证 1 条 / 3 有凭证多条 */
@@ -91,11 +94,15 @@ export function buildSubjectBars(
   return bars.map((b) => ({ ...b, widthPct: max > 0 ? (b.minutes / max) * 100 : 0 }));
 }
 
-/** 聚合当前用户的个人统计：streak + 累计值（全历史）+ 近 26 周热力图 + 科目横条 */
+/** 聚合当前用户的个人统计：streak + 累计值（全历史）+ 近 26 周热力图 + 科目横条 + 成就墙 */
 export async function getMeStats(userId: number): Promise<MeStats> {
   const db = getPrisma();
   const today = beijingDateStr(new Date());
-  const [rows, sums, subjects] = await Promise.all([
+  const [user, rows, sums, subjects] = await Promise.all([
+    db.user.findUnique({
+      where: { id: userId },
+      select: { weeklyGoalDays: true, createdAt: true },
+    }),
     db.checkIn.findMany({ where: { userId }, select: { date: true, hasPhoto: true } }),
     db.checkIn.groupBy({
       by: ["subjectId"],
@@ -108,16 +115,30 @@ export async function getMeStats(userId: number): Promise<MeStats> {
   const dates = [...new Set(rows.map((r) => r.date))];
   const names: Record<number, string> = {};
   for (const s of subjects) names[s.id] = s.name;
+  const totalMinutes = sums.reduce((n, s) => n + (s._sum.durationMinutes ?? 0), 0);
+
+  const facts = weeklyAchievementFacts(
+    rows.map((r) => r.date),
+    user?.weeklyGoalDays ?? 6,
+    user ? beijingDateStr(user.createdAt) : undefined,
+    lastMonday(new Date()),
+  );
 
   return {
     today,
     streak: computeStreak(dates, today),
     totalDays: dates.length,
-    totalMinutes: sums.reduce((n, s) => n + (s._sum.durationMinutes ?? 0), 0),
+    totalMinutes,
     heatRecords: buildHeatRecords(rows, today),
     subjects: buildSubjectBars(
       sums.map((s) => ({ subjectId: s.subjectId, minutes: s._sum.durationMinutes ?? 0 })),
       names,
     ),
+    achievements: computeAchievements({
+      totalMinutes,
+      totalDays: dates.length,
+      photoCount: rows.filter((r) => r.hasPhoto).length,
+      ...facts,
+    }),
   };
 }
