@@ -1,10 +1,18 @@
-# v1 暂不启用：2026-08-31 实机勘察发现服务器 8080 已被既有 nginx 占用、
-# 80/443 由 Caddy 服务 skills.nanmu.xyz（勿动其 /etc/caddy/Caddyfile），
-# 且域名未备案——应用以 PM2 直连 0.0.0.0:3210 对外（见 ecosystem.config.cjs）。
+# 2026-09-11 域名上线（nanmu.xyz 备案通过）后的实际架构。
+# 服务器 80/443 由系统 Caddy 服务（另有 skills.nanmu.xyz 站点，互不影响——
+# Caddy 按 Host 精确匹配，各自站点块独立），本文件是往 /etc/caddy/Caddyfile
+# 「追加」的站点块（现场操作，不随 deploy.sh 自动化；修改只能追加/编辑自己的块，
+# 绝不覆盖既有内容）：
 #
-# 域名备案后启用：在服务器 /etc/caddy/Caddyfile 「追加」下方站点块（不要覆盖既有内容），
-# 并把 ecosystem 的 HOSTNAME 收紧回 127.0.0.1、PORT 回 3000：
+#   nanmu.xyz {
+#     reverse_proxy 127.0.0.1:3000
+#   }
 #
-# checkmate.nanmu.xyz {
-#   reverse_proxy 127.0.0.1:3000
-# }
+# Caddy 自动经 Let's Encrypt 签发/续期证书（80 上的 ACME 挑战由 Caddy 自理，
+# 安全组放行 80/443 即可）。应用收回到 127.0.0.1:3000（ecosystem.config.cjs），
+# 外网唯一入口是 443；3210/tcp 已从安全组移除。
+#
+# 「禁止 IP 直接访问」的实现（无需额外配置）：
+#   * 应用只监听 127.0.0.1 → IP:任意端口 都到不了应用；
+#   * 安全组只剩 22/80/443 → IP:3210 在防火墙层就被丢弃；
+#   * IP 直连 80/443 时 Host 不匹配任何站点块，Caddy 返回 404 空站，无任何内容。

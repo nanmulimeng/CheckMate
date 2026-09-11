@@ -175,7 +175,7 @@ pm2 save
 # standalone 首启要几秒，重试 10 次每次隔 2 秒；/login 是静态页，最轻量。
 CODE=""
 for i in $(seq 1 10); do
-  CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3210/login || true)"
+  CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login || true)"
   [ "$CODE" = "200" ] && break
   sleep 2
 done
@@ -195,4 +195,4 @@ echo "    部署完成：$RELEASE_DIR"
 REMOTE
 
 # 本地临时目录/发布包由开头的 trap EXIT 兜底清理（成功与失败路径都覆盖）
-echo "全部完成。访问 http://服务器IP:3210 验收（记得阿里云安全组放行 3210/tcp）。"
+echo "全部完成。访问 https://nanmu.xyz 验收（Caddy 反代 127.0.0.1:3000；外网不再直连应用端口）。"

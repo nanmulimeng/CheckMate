@@ -16,7 +16,8 @@
 #   5. /etc/crontab 业务定时任务（secret 占位 __SECRET__ 由 deploy.sh 首次部署替换）
 #      + 每日凌晨备份（photos + prisma.db，保留最近 7 份）
 #
-# 唯一的手动步骤：阿里云控制台安全组放行 3210/tcp（firewalld 未运行，本机无需配置）。
+# 唯一的手动步骤：阿里云控制台安全组放行 80/443（firewalld 未运行，本机无需配置；
+# 2026-09-11 起域名经 Caddy 对外，3210/tcp 已从安全组移除，应用不再监听公网）。
 # ============================================================================
 set -euo pipefail
 
@@ -59,7 +60,7 @@ sudo chown -R nanmu:nanmu /var/lib/checkmate /opt/checkmate
 
 echo "==> [5/5] /etc/crontab（业务 cron + 备份；幂等：已有则跳过）+ 备份脚本"
 # __SECRET__ 占位符由 deploy/deploy.sh 在首次部署时用生产库 Setting.cron_secret 替换。
-# 应用监听 0.0.0.0:3210（直连对外），cron 走本机回环即可。
+# 应用监听 127.0.0.1:3000（Caddy 反代对外），cron 走本机回环即可。
 # remind 是每小时整点打点：到不到提醒小时由应用里的 Setting.remind_hour 决定
 #（管理员在 /admin 改，即时生效，不用回来改 crontab）。
 # weekly 定在周一 09:07：补卡窗口开到次日北京 01:00（src/lib/dates.ts 的截止），
@@ -87,9 +88,9 @@ sudo chmod +x /opt/checkmate/backup.sh
 
 if ! sudo grep -q 'api/cron/remind' /etc/crontab; then
   sudo tee -a /etc/crontab >/dev/null <<'EOF'
-0 * * * * root curl -s "http://127.0.0.1:3210/api/cron/remind?secret=__SECRET__" >/dev/null
-7 9 * * 1 root curl -s "http://127.0.0.1:3210/api/cron/weekly?secret=__SECRET__" >/dev/null
-30 3 * * * root curl -s "http://127.0.0.1:3210/api/cron/cleanup?secret=__SECRET__" >/dev/null
+0 * * * * root curl -s "http://127.0.0.1:3000/api/cron/remind?secret=__SECRET__" >/dev/null
+7 9 * * 1 root curl -s "http://127.0.0.1:3000/api/cron/weekly?secret=__SECRET__" >/dev/null
+30 3 * * * root curl -s "http://127.0.0.1:3000/api/cron/cleanup?secret=__SECRET__" >/dev/null
 0 4 * * * root /opt/checkmate/backup.sh >> /var/lib/checkmate/backups/backup.log 2>&1
 EOF
   echo "    已写入（__SECRET__ 待 deploy.sh 替换）"
@@ -99,8 +100,9 @@ fi
 
 cat <<'NOTE'
 
->>> 重要提醒：在阿里云控制台放行安全组入方向 3210/tcp，否则外网访问不了
-    （控制台 → ECS → 安全组 → 添加入方向规则：TCP 3210，源 0.0.0.0/0）。
+>>> 重要提醒：在阿里云控制台放行安全组入方向 80/tcp 与 443/tcp，否则域名访问不了
+    （控制台 → ECS → 安全组 → 添加入方向规则：TCP 80 与 443，源 0.0.0.0/0；
+    3210/tcp 若还在则移除——应用只监听 127.0.0.1，公网直连端口应保持关闭）。
     这一步只能手动在控制台做，脚本无法代替。
 
 setup.sh 完成。接下来在开发机执行 deploy/deploy.sh 完成首次部署。

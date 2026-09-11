@@ -59,4 +59,4 @@ done
 echo "当前保留：$(echo "$KEEP" | tr '\n' ' ')"
 REMOTE
 
-echo "回滚完成：http://服务器IP:3210 已运行上一版。"
+echo "回滚完成：https://nanmu.xyz 已运行上一版（Caddy 反代 127.0.0.1:3000）。"
