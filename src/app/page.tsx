@@ -61,6 +61,8 @@ export default async function Home(props: PageProps<"/">) {
   const againSubjectId =
     doneParam && typeof sp.again === "string" && /^\d+$/.test(sp.again) ? sp.again : null;
   const makeup = feed.date !== beijingDateStr(now);
+  // 还没打卡名单（含催一下按钮）放在成员状态区上方：打开首页首屏即可催，
+  // 不用翻完整个近一周动态流拉到最底部。
   const pending = feed.members.filter((m) => !m.hasCheckedIn);
 
   return (
@@ -97,22 +99,6 @@ export default async function Home(props: PageProps<"/">) {
         </p>
       )}
 
-      <MemberStatus members={feed.members} />
-
-      {feed.days.length === 0 && (
-        <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-          最近一周还没有打卡记录，来做第一个吧。
-        </p>
-      )}
-      {feed.days.map((day) => (
-        <section key={day.date} aria-label={`${day.label}打卡`} className="flex flex-col gap-2.5">
-          <h2 className="px-1 text-xs font-medium text-muted-foreground">{day.label}</h2>
-          {day.checkins.map((c) => (
-            <CheckinCard key={c.id} data={c} />
-          ))}
-        </section>
-      ))}
-
       {pending.length > 0 && (
         <Card className="bg-muted/40">
           <CardHeader>
@@ -137,6 +123,22 @@ export default async function Home(props: PageProps<"/">) {
           </CardContent>
         </Card>
       )}
+
+      <MemberStatus members={feed.members} />
+
+      {feed.days.length === 0 && (
+        <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          最近一周还没有打卡记录，来做第一个吧。
+        </p>
+      )}
+      {feed.days.map((day) => (
+        <section key={day.date} aria-label={`${day.label}打卡`} className="flex flex-col gap-2.5">
+          <h2 className="px-1 text-xs font-medium text-muted-foreground">{day.label}</h2>
+          {day.checkins.map((c) => (
+            <CheckinCard key={c.id} data={c} />
+          ))}
+        </section>
+      ))}
     </main>
   );
 }
